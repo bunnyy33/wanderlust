@@ -164,3 +164,14 @@ model Wishlist {
   hotelId       String?
   createdAt     DateTime @default(now())
 }
+
+model EmailLog {
+  id         String   @id @default(cuid())
+  toEmail    String
+  subject    String
+  body       String
+  type       String   // BOOKING_CONFIRMATION | REVIEW_REQUEST | WELCOME | MANUAL
+  status     String   @default("SENT") // SENT | FAILED | PENDING
+  relatedRef String?  // booking reference, etc.
+  createdAt  DateTime @default(now())
+}

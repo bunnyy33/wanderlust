@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { isAdminAuthed } from "@/lib/admin-auth";
 
 // GET /api/admin/stats — dashboard KPIs
 export async function GET() {
+  if (!(await isAdminAuthed())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   const [
     totalBookings,
     totalExperiences,

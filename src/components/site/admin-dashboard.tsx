@@ -24,6 +24,8 @@ import {
   Hotel as HotelIcon,
   LayoutDashboard,
   Loader2,
+  LogOut,
+  Mail,
   MapPin,
   Plane,
   RefreshCw,
@@ -71,6 +73,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CatalogManager } from "@/components/site/catalog-manager";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                              */
@@ -119,7 +122,7 @@ interface AdminStats {
   recentBookings: RecentBooking[];
 }
 
-type SectionId = "overview" | "bookings" | "catalog" | "analytics" | "ai";
+type SectionId = "overview" | "bookings" | "catalog" | "analytics" | "ai" | "notifications";
 
 /* ------------------------------------------------------------------ */
 /* Formatters                                                         */
@@ -253,6 +256,7 @@ const SECTIONS: {
   { id: "catalog", label: "Catalog", icon: BookOpen },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
   { id: "ai", label: "AI Insights", icon: Sparkles },
+  { id: "notifications", label: "Notifications", icon: Mail },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -565,16 +569,22 @@ function KpiSkeleton() {
 /* Main component                                                     */
 /* ------------------------------------------------------------------ */
 
-export function AdminDashboard({ onExit }: { onExit?: () => void }) {
+export function AdminDashboard({
+  onExit,
+  onLogout,
+}: {
+  onExit?: () => void;
+  onLogout?: () => void;
+}) {
   const [section, setSection] = useState<SectionId>("overview");
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <Header onExit={onExit} />
+      <Header onExit={onExit} onLogout={onLogout} />
       <div className="flex flex-1">
         {/* Desktop sidebar */}
         <aside className="hidden w-64 shrink-0 md:block">
-          <Sidebar section={section} setSection={setSection} />
+          <Sidebar section={section} setSection={setSection} onLogout={onLogout} />
         </aside>
 
         <main className="flex min-w-0 flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8">
@@ -586,6 +596,7 @@ export function AdminDashboard({ onExit }: { onExit?: () => void }) {
           {section === "catalog" && <CatalogSection />}
           {section === "analytics" && <AnalyticsSection />}
           {section === "ai" && <AIInsightsSection />}
+          {section === "notifications" && <NotificationsSection />}
         </main>
       </div>
     </div>
@@ -596,7 +607,13 @@ export function AdminDashboard({ onExit }: { onExit?: () => void }) {
 /* Header                                                             */
 /* ------------------------------------------------------------------ */
 
-function Header({ onExit }: { onExit?: () => void }) {
+function Header({
+  onExit,
+  onLogout,
+}: {
+  onExit?: () => void;
+  onLogout?: () => void;
+}) {
   return (
     <header className="sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur-md">
       <div className="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -630,6 +647,12 @@ function Header({ onExit }: { onExit?: () => void }) {
               AD
             </AvatarFallback>
           </Avatar>
+          {onLogout && (
+            <Button variant="ghost" size="sm" onClick={onLogout} title="Sign out">
+              <LogOut className="size-4" />
+              <span className="hidden sm:inline">Sign out</span>
+            </Button>
+          )}
           {onExit && (
             <Button variant="outline" size="sm" onClick={onExit}>
               <ArrowLeft className="size-4" />
@@ -649,9 +672,11 @@ function Header({ onExit }: { onExit?: () => void }) {
 function Sidebar({
   section,
   setSection,
+  onLogout,
 }: {
   section: SectionId;
   setSection: (s: SectionId) => void;
+  onLogout?: () => void;
 }) {
   return (
     <nav className="sticky top-16 flex h-[calc(100vh-4rem)] flex-col gap-2 border-r border-border/70 bg-card/40 p-4">
@@ -685,7 +710,7 @@ function Sidebar({
 
       <Separator className="my-2" />
 
-      <div className="mt-auto rounded-xl border border-gold/20 bg-gold/5 p-4">
+      <div className="rounded-xl border border-gold/20 bg-gold/5 p-4">
         <div className="flex items-center gap-2">
           <Sparkles className="size-4 text-gold" />
           <p className="text-sm font-semibold text-foreground">AI Concierge</p>
@@ -701,6 +726,18 @@ function Sidebar({
           Open AI Insights
         </Button>
       </div>
+
+      {onLogout && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-2 justify-start gap-2 text-muted-foreground hover:text-foreground"
+          onClick={onLogout}
+        >
+          <LogOut className="size-4" />
+          Sign out
+        </Button>
+      )}
     </nav>
   );
 }
@@ -1228,25 +1265,10 @@ function CatalogSection() {
     <div className="space-y-6">
       <SectionTitle
         title="Catalog"
-        subtitle="Browse every experience and hotel available on the platform."
+        subtitle="Add, edit and remove experiences, hotels and destinations — no code required."
         icon={BookOpen}
       />
-      <Tabs defaultValue="experiences" className="w-full">
-        <TabsList className="h-10">
-          <TabsTrigger value="experiences" className="px-4">
-            <Plane className="size-3.5" /> Experiences
-          </TabsTrigger>
-          <TabsTrigger value="hotels" className="px-4">
-            <HotelIcon className="size-3.5" /> Hotels
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="experiences">
-          <ExperiencesTable />
-        </TabsContent>
-        <TabsContent value="hotels">
-          <HotelsTable />
-        </TabsContent>
-      </Tabs>
+      <CatalogManager />
     </div>
   );
 }
@@ -2159,6 +2181,167 @@ Be specific, quantitative where possible, and concise. Use clean markdown bullet
         </Card>
       </div>
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Notifications (email log)                                          */
+/* ------------------------------------------------------------------ */
+
+interface EmailItem {
+  id: string;
+  toEmail: string;
+  subject: string;
+  type: string;
+  status: string;
+  relatedRef: string | null;
+  createdAt: string;
+}
+
+function NotificationsSection() {
+  const [emails, setEmails] = useState<EmailItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("ALL");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/emails?limit=50");
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setEmails(data.emails);
+    } catch {
+      toast.error("Failed to load notifications");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const filtered = emails.filter(
+    (e) => filter === "ALL" || e.type === filter,
+  );
+
+  const counts = {
+    BOOKING_CONFIRMATION: emails.filter((e) => e.type === "BOOKING_CONFIRMATION").length,
+    MANUAL: emails.filter((e) => e.type === "MANUAL").length,
+  };
+
+  return (
+    <div className="space-y-6">
+      <SectionTitle
+        title="Notifications & Emails"
+        subtitle="Every booking confirmation and system email, logged here. Configure SMTP env vars (SMTP_HOST, SMTP_USER, SMTP_PASS, SMTP_FROM) to deliver real emails."
+        icon={Mail}
+      />
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard label="Total emails" value={emails.length} icon={<Mail className="size-5 text-gold" />} />
+        <StatCard label="Booking confirmations" value={counts.BOOKING_CONFIRMATION} icon={<CalendarCheck className="size-5 text-gold" />} />
+        <StatCard label="Delivery" value={emails.length ? "Logged ✓" : "—"} icon={<CheckCircle2 className="size-5 text-gold" />} />
+      </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <CardTitle className="text-base font-semibold">Email log</CardTitle>
+          <div className="flex items-center gap-2">
+            <select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              className="rounded-md border border-border bg-background px-2.5 py-1.5 text-xs"
+            >
+              <option value="ALL">All types</option>
+              <option value="BOOKING_CONFIRMATION">Confirmations</option>
+              <option value="MANUAL">Manual</option>
+            </select>
+            <Button variant="outline" size="sm" onClick={load}>
+              <RefreshCw className="size-3.5" /> Refresh
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="space-y-2">
+              {[...Array(5)].map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full rounded-lg" />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center py-12 text-center">
+              <Mail className="size-8 text-muted-foreground/40" />
+              <p className="mt-2 text-sm font-medium">No emails yet</p>
+              <p className="text-xs text-muted-foreground">
+                Confirmation emails appear here after the first booking.
+              </p>
+            </div>
+          ) : (
+            <div className="max-h-[560px] space-y-2 overflow-y-auto">
+              {filtered.map((e) => (
+                <div
+                  key={e.id}
+                  className="flex items-start gap-3 rounded-xl border border-border bg-card/60 p-3.5"
+                >
+                  <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10">
+                    <Mail className="size-4 text-primary" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-semibold text-foreground">
+                        {e.subject}
+                      </p>
+                      <Badge
+                        variant="outline"
+                        className="shrink-0 border-emerald-500/30 bg-emerald-500/10 text-emerald-600"
+                      >
+                        {e.status}
+                      </Badge>
+                    </div>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      To: {e.toEmail}
+                      {e.relatedRef && <span> · Ref: {e.relatedRef}</span>}
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground/70">
+                      {format(new Date(e.createdAt), "MMM d, yyyy · h:mm a")} · {e.type.replace(/_/g, " ")}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function StatCard({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: string | number;
+  icon: React.ReactNode;
+}) {
+  return (
+    <Card>
+      <CardContent className="flex items-center justify-between p-5">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            {label}
+          </p>
+          <p className="mt-1 font-[family-name:var(--font-display)] text-2xl font-bold text-foreground">
+            {value}
+          </p>
+        </div>
+        <div className="grid size-10 place-items-center rounded-xl bg-primary/10">
+          {icon}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

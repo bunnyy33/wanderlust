@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { serializeBooking } from "@/lib/transform";
 import { generateReference } from "@/lib/format";
+import { sendEmail, bookingConfirmationEmail } from "@/lib/mailer";
 
 // GET /api/bookings?email=  — list bookings by customer email
 export async function GET(req: NextRequest) {
@@ -119,6 +120,32 @@ export async function POST(req: NextRequest) {
       data: { specialRequests: `Room: ${roomTypeName}` },
     });
   }
+
+  // Fire confirmation email (non-blocking; logs to EmailLog regardless of SMTP)
+  const title = booking.experience?.title || booking.hotel?.name || "Your booking";
+  const dateStr = new Date(checkInDate).toLocaleDateString("en-US", {
+    weekday: "short",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const { subject, html } = bookingConfirmationEmail({
+    customerName: customerName,
+    reference,
+    title,
+    date: dateStr,
+    guests: parseInt(guests, 10) || 1,
+    nights: parseInt(nights, 10) || 1,
+    total: parseFloat(totalAmount),
+    type,
+  });
+  sendEmail({
+    to: customerEmail,
+    subject,
+    html,
+    type: "BOOKING_CONFIRMATION",
+    relatedRef: reference,
+  }).catch((e) => console.error("Booking email error:", e));
 
   return NextResponse.json({
     booking: serializeBooking({ ...booking, specialRequests: booking.specialRequests || (roomTypeName ? `Room: ${roomTypeName}` : null) }),

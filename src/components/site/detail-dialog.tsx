@@ -320,7 +320,7 @@ function ExperienceDetail({
                   couponCode={couponCode} setCouponCode={setCouponCode}
                   couponMsg={couponMsg} applyCoupon={applyCoupon} validating={validating}
                   breakdown={price}
-                  availability={experience.availability - experience.bookedCount}
+                  availability={experience.availability}
                   cta="Reserve now"
                   onCta={() => setStep("checkout")}
                 />
@@ -499,44 +499,101 @@ function HotelDetail({
         <div className="border-l border-border bg-card">
           <ScrollArea className="h-[92vh] lg:h-[88vh]">
             {step === "details" ? (
-              <div className="space-y-5 p-5">
-                <div className="flex items-baseline justify-between">
-                  <div>
-                    <span className="font-[family-name:var(--font-display)] text-2xl font-bold">{formatPrice(hotel.pricePerNight + (room?.priceModifier || 0))}</span>
-                    <span className="text-sm text-muted-foreground"> / night</span>
+              <div className="flex flex-col">
+                {/* Price header */}
+                <div className="border-b border-border bg-muted/30 px-5 py-4">
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-[family-name:var(--font-display)] text-3xl font-bold text-foreground">
+                      {formatPrice(hotel.pricePerNight + (room?.priceModifier || 0))}
+                    </span>
+                    <span className="text-sm text-muted-foreground">/ night</span>
+                    {hotel.originalPrice && (
+                      <span className="text-sm text-muted-foreground line-through">{formatPrice(hotel.originalPrice)}</span>
+                    )}
                   </div>
-                  {hotel.originalPrice && (
-                    <span className="text-sm text-muted-foreground line-through">{formatPrice(hotel.originalPrice)}</span>
-                  )}
-                </div>
-                <div className="text-xs text-muted-foreground">{room?.name} · Sleeps {room?.maxGuests}</div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Check-in</Label>
-                    <Input type="date" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} className="mt-1" />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Check-out</Label>
-                    <Input type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} className="mt-1" />
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    {room?.name} · Sleeps {room?.maxGuests}
                   </div>
                 </div>
 
-                <div className="rounded-xl bg-muted/50 p-3 text-sm">
-                  <div className="flex justify-between"><span className="text-muted-foreground">{formatPrice(hotel.pricePerNight + (room?.priceModifier || 0))} × {nights} nights</span><span>{formatPrice(price.subtotal)}</span></div>
-                  <div className="mt-1 flex justify-between"><span className="text-muted-foreground">Taxes & fees</span><span>{formatPrice(price.taxesAndFees)}</span></div>
-                  {price.discount > 0 && <div className="mt-1 flex justify-between text-emerald-600"><span>Discount</span><span>-{formatPrice(price.discount)}</span></div>}
-                  <Separator className="my-2" />
-                  <div className="flex justify-between font-semibold"><span>Total</span><span className="gold-text">{formatPrice(price.total)}</span></div>
-                </div>
+                <div className="flex-1 space-y-6 p-5">
+                  {/* Dates */}
+                  <WidgetSection label="Dates">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="mb-1.5 block text-xs text-muted-foreground">Check-in</Label>
+                        <Input type="date" value={checkIn} onChange={(e) => setCheckIn(e.target.value)} />
+                      </div>
+                      <div>
+                        <Label className="mb-1.5 block text-xs text-muted-foreground">Check-out</Label>
+                        <Input type="date" value={checkOut} onChange={(e) => setCheckOut(e.target.value)} />
+                      </div>
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {nights} night{nights > 1 ? "s" : ""} selected
+                    </p>
+                  </WidgetSection>
 
-                <CouponRow code={couponCode} setCouponCode={setCouponCode} msg={couponMsg} apply={applyCoupon} validating={validating} />
+                  {/* Coupon */}
+                  <WidgetSection label="Promo code" hint="Save more">
+                    <div className="flex gap-2">
+                      <Input
+                        value={couponCode}
+                        onChange={(e) => setCouponCode(e.target.value)}
+                        placeholder="WELCOME10"
+                        className="uppercase"
+                      />
+                      <Button
+                        variant="outline"
+                        onClick={applyCoupon}
+                        disabled={validating || !couponCode.trim()}
+                        className="shrink-0"
+                      >
+                        {validating ? <Loader2 size={14} className="animate-spin" /> : "Apply"}
+                      </Button>
+                    </div>
+                    {couponMsg ? (
+                      <p className={cn("mt-2 text-xs", couponMsg.ok ? "text-emerald-600" : "text-rose-500")}>
+                        {couponMsg.text}
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-[11px] text-muted-foreground">
+                        Try <span className="font-medium text-foreground">WELCOME10</span> or <span className="font-medium text-foreground">HONEYMOON15</span>
+                      </p>
+                    )}
+                  </WidgetSection>
 
-                <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => setStep("checkout")}>
-                  Reserve now <ChevronRight size={16} />
-                </Button>
-                <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-                  <ShieldCheck size={13} className="text-emerald-500" /> Free cancellation · No booking fees
+                  {/* Price summary */}
+                  <div className="rounded-xl border border-border bg-card p-4">
+                    <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-foreground">Price summary</h4>
+                    <div className="space-y-1.5 text-sm">
+                      <Row
+                        label={`${formatPrice(hotel.pricePerNight + (room?.priceModifier || 0))} × ${nights} night${nights > 1 ? "s" : ""}`}
+                        value={formatPrice(price.subtotal)}
+                      />
+                      <Row label="Taxes & fees" value={formatPrice(price.taxesAndFees)} />
+                      {price.discount > 0 && (
+                        <Row label="Discount" value={`−${formatPrice(price.discount)}`} className="text-emerald-600" />
+                      )}
+                    </div>
+                    <Separator className="my-3" />
+                    <div className="flex items-end justify-between">
+                      <span className="text-sm font-medium text-muted-foreground">Total</span>
+                      <span className="font-[family-name:var(--font-display)] text-2xl font-bold gold-text">
+                        {formatPrice(price.total)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <Button
+                    className="h-12 w-full bg-primary text-base font-semibold text-primary-foreground hover:bg-primary/90"
+                    onClick={() => setStep("checkout")}
+                  >
+                    Reserve now <ChevronRight size={18} />
+                  </Button>
+                  <div className="-mt-3 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+                    <ShieldCheck size={13} className="text-emerald-500" /> Free cancellation · No booking fees
+                  </div>
                 </div>
               </div>
             ) : (
@@ -651,116 +708,181 @@ function BookingWidget({
   breakdown: { subtotal: number; addonsTotal: number; taxesAndFees: number; discount: number; total: number };
   availability: number; cta: string; onCta: () => void;
 }) {
+  const [priceAmt, priceUnit] = priceLabel.split(" / ");
   return (
-    <div className="space-y-5 p-5">
-      <div>
+    <div className="flex flex-col">
+      {/* Price header */}
+      <div className="border-b border-border bg-muted/30 px-5 py-4">
         <div className="flex items-baseline gap-2">
-          <span className="font-[family-name:var(--font-display)] text-2xl font-bold">{priceLabel.split(" / ")[0]}</span>
-          {original && <span className="text-sm text-muted-foreground line-through">{formatPrice(original)}</span>}
+          <span className="font-[family-name:var(--font-display)] text-3xl font-bold text-foreground">{priceAmt}</span>
+          {original && (
+            <span className="text-sm text-muted-foreground line-through">{formatPrice(original)}</span>
+          )}
+          {original && (
+            <Badge className="ml-1 bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/15">
+              {Math.round((1 - (original ? Number(priceAmt.replace(/[^0-9.]/g, "")) / original : 1)) * 100)}% off
+            </Badge>
+          )}
         </div>
-        <div className="text-xs text-muted-foreground">{priceLabel.split(" / ")[1] || ""}</div>
+        {priceUnit && <div className="mt-0.5 text-xs text-muted-foreground">{priceUnit}</div>}
+        {availability <= 5 && (
+          <div className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-amber-600 dark:text-amber-400">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+            </span>
+            Only {availability} spots left
+          </div>
+        )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <Label className="flex items-center gap-1 text-xs text-muted-foreground"><CalendarDays size={12} /> Date</Label>
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="mt-1" />
+      <div className="flex-1 space-y-6 p-5">
+        {/* Date & guests */}
+        <WidgetSection label="When & who">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label className="mb-1.5 flex items-center gap-1 text-xs text-muted-foreground">
+                <CalendarDays size={12} /> Date
+              </Label>
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+            <div>
+              <Label className="mb-1.5 flex items-center gap-1 text-xs text-muted-foreground">
+                <Users size={12} /> {guestsLabel}
+              </Label>
+              <Select value={String(guests)} onValueChange={(v) => setGuests(Number(v))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                    <SelectItem key={n} value={String(n)}>{n}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </WidgetSection>
+
+        {/* Addons */}
+        {addons.length > 0 && (
+          <WidgetSection label="Add-ons" hint="Optional">
+            <div className="space-y-2">
+              {addons.map((a) => {
+                const on = selectedAddons.includes(a.id);
+                return (
+                  <button
+                    key={a.id}
+                    onClick={() => toggleAddon(a.id)}
+                    className={cn(
+                      "flex w-full items-center justify-between rounded-lg border p-2.5 text-left text-sm transition-colors",
+                      on ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                    )}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span className={cn(
+                        "grid h-4 w-4 place-items-center rounded border transition-colors",
+                        on ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40"
+                      )}>
+                        {on && <Check size={11} />}
+                      </span>
+                      {a.name}
+                    </span>
+                    <span className="font-medium text-muted-foreground">+{formatPrice(a.price)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </WidgetSection>
+        )}
+
+        {/* Coupon */}
+        <WidgetSection label="Promo code" hint="Save more">
+          <div className="flex gap-2">
+            <Input
+              value={couponCode}
+              onChange={(e) => setCouponCode(e.target.value)}
+              placeholder="WELCOME10"
+              className="uppercase"
+            />
+            <Button
+              variant="outline"
+              onClick={applyCoupon}
+              disabled={validating || !couponCode.trim()}
+              className="shrink-0"
+            >
+              {validating ? <Loader2 size={14} className="animate-spin" /> : "Apply"}
+            </Button>
+          </div>
+          {couponMsg ? (
+            <p className={cn("mt-2 text-xs", couponMsg.ok ? "text-emerald-600" : "text-rose-500")}>
+              {couponMsg.text}
+            </p>
+          ) : (
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Try <span className="font-medium text-foreground">WELCOME10</span>, <span className="font-medium text-foreground">LUXE25</span> or <span className="font-medium text-foreground">HONEYMOON15</span>
+            </p>
+          )}
+        </WidgetSection>
+
+        {/* Price summary */}
+        <div className="rounded-xl border border-border bg-card p-4">
+          <div className="space-y-1.5 text-sm">
+            <Row label="Subtotal" value={formatPrice(breakdown.subtotal)} />
+            {breakdown.addonsTotal > 0 && <Row label="Add-ons" value={formatPrice(breakdown.addonsTotal)} />}
+            <Row label="Taxes & fees" value={formatPrice(breakdown.taxesAndFees)} />
+            {breakdown.discount > 0 && (
+              <Row label="Discount" value={`−${formatPrice(breakdown.discount)}`} className="text-emerald-600" />
+            )}
+          </div>
+          <Separator className="my-3" />
+          <div className="flex items-end justify-between">
+            <span className="text-sm font-medium text-muted-foreground">Total</span>
+            <span className="font-[family-name:var(--font-display)] text-2xl font-bold gold-text">
+              {formatPrice(breakdown.total)}
+            </span>
+          </div>
         </div>
-        <div>
-          <Label className="flex items-center gap-1 text-xs text-muted-foreground"><Users size={12} /> {guestsLabel}</Label>
-          <Select value={String(guests)} onValueChange={(v) => setGuests(Number(v))}>
-            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => <SelectItem key={n} value={String(n)}>{n}</SelectItem>)}
-            </SelectContent>
-          </Select>
+
+        <Button
+          className="h-12 w-full bg-primary text-base font-semibold text-primary-foreground hover:bg-primary/90"
+          onClick={onCta}
+        >
+          {cta} <ChevronRight size={18} />
+        </Button>
+        <div className="-mt-3 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+          <ShieldCheck size={13} className="text-emerald-500" /> Free cancellation · Secure payment
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* Addons */}
-      <div>
-        <Label className="text-xs text-muted-foreground">Enhance your experience</Label>
-        <div className="mt-1.5 space-y-1.5">
-          {addons.map((a) => {
-            const on = selectedAddons.includes(a.id);
-            return (
-              <button
-                key={a.id}
-                onClick={() => toggleAddon(a.id)}
-                className={cn("flex w-full items-center justify-between rounded-lg border p-2.5 text-left text-sm transition-colors", on ? "border-primary bg-primary/5" : "border-border hover:border-primary/40")}
-              >
-                <span className="flex items-center gap-2">
-                  <span className={cn("grid h-4 w-4 place-items-center rounded border", on ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40")}>
-                    {on && <Check size={11} />}
-                  </span>
-                  {a.name}
-                </span>
-                <span className="font-medium">+{formatPrice(a.price)}</span>
-              </button>
-            );
-          })}
-        </div>
+function WidgetSection({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <h4 className="text-xs font-semibold uppercase tracking-wider text-foreground">
+          {label}
+        </h4>
+        {hint && <span className="text-[11px] text-muted-foreground">{hint}</span>}
       </div>
-
-      <CouponRow code={couponCode} setCouponCode={setCouponCode} msg={couponMsg} apply={applyCoupon} validating={validating} />
-
-      <div className="rounded-xl bg-muted/50 p-3 text-sm">
-        <Row label="Subtotal" value={formatPrice(breakdown.subtotal)} />
-        {breakdown.addonsTotal > 0 && <Row label="Add-ons" value={formatPrice(breakdown.addonsTotal)} />}
-        <Row label="Taxes & fees" value={formatPrice(breakdown.taxesAndFees)} />
-        {breakdown.discount > 0 && <Row label="Discount" value={`-${formatPrice(breakdown.discount)}`} className="text-emerald-600" />}
-        <Separator className="my-2" />
-        <div className="flex justify-between font-semibold">
-          <span>Total</span>
-          <span className="gold-text text-lg">{formatPrice(breakdown.total)}</span>
-        </div>
-      </div>
-
-      {availability <= 5 && (
-        <div className="flex items-center gap-1.5 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
-          <Info size={13} /> Only {availability} spots left — book soon!
-        </div>
-      )}
-
-      <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90" onClick={onCta}>
-        {cta} <ChevronRight size={16} />
-      </Button>
-      <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-        <ShieldCheck size={13} className="text-emerald-500" /> Free cancellation · Secure payment
-      </div>
+      {children}
     </div>
   );
 }
 
 function Row({ label, value, className }: { label: string; value: string; className?: string }) {
   return (
-    <div className="mt-1 flex justify-between">
+    <div className="flex justify-between">
       <span className="text-muted-foreground">{label}</span>
       <span className={className}>{value}</span>
-    </div>
-  );
-}
-
-function CouponRow({
-  code, setCouponCode, msg, apply, validating,
-}: {
-  code: string; setCouponCode: (v: string) => void;
-  msg: { ok: boolean; text: string } | null;
-  apply: () => void; validating: boolean;
-}) {
-  return (
-    <div>
-      <Label className="flex items-center gap-1 text-xs text-muted-foreground"><Tag size={12} /> Promo code</Label>
-      <div className="mt-1 flex gap-2">
-        <Input value={code} onChange={(e) => setCouponCode(e.target.value)} placeholder="e.g. WELCOME10" className="uppercase" />
-        <Button variant="outline" onClick={apply} disabled={validating || !code.trim()}>
-          {validating ? <Loader2 size={14} className="animate-spin" /> : "Apply"}
-        </Button>
-      </div>
-      {msg && (
-        <p className={cn("mt-1.5 text-xs", msg.ok ? "text-emerald-600" : "text-rose-500")}>{msg.text}</p>
-      )}
-      <p className="mt-1 text-[11px] text-muted-foreground">Try: WELCOME10, LUXE25, HONEYMOON15</p>
     </div>
   );
 }
@@ -788,71 +910,97 @@ function Checkout({
   };
 
   return (
-    <div className="space-y-5 p-5">
-      <button onClick={onBack} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        ← Back
-      </button>
-      <div>
-        <h3 className="font-[family-name:var(--font-display)] text-xl font-semibold">Checkout</h3>
-        <p className="text-sm text-muted-foreground">{title}</p>
+    <div className="flex flex-col">
+      {/* Header */}
+      <div className="border-b border-border bg-muted/30 px-5 py-4">
+        <button onClick={onBack} className="flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground">
+          <ChevronRight size={13} className="rotate-180" /> Back
+        </button>
+        <h3 className="mt-2 font-[family-name:var(--font-display)] text-2xl font-bold">Checkout</h3>
+        <p className="mt-0.5 text-sm text-muted-foreground">{title}</p>
         <p className="mt-1 text-xs text-muted-foreground">{date} · {summary}</p>
       </div>
 
-      <div className="space-y-3">
-        <div>
-          <Label className="text-xs text-muted-foreground">Full name *</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" className="mt-1" />
-        </div>
-        <div>
-          <Label className="text-xs text-muted-foreground">Email *</Label>
-          <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="jane@email.com" className="mt-1" />
-        </div>
-        <div>
-          <Label className="text-xs text-muted-foreground">Phone</Label>
-          <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 555 000 0000" className="mt-1" />
-        </div>
-        <div>
-          <Label className="text-xs text-muted-foreground">Special requests</Label>
-          <Textarea value={requests} onChange={(e) => setRequests(e.target.value)} placeholder="Dietary needs, accessibility, celebration..." className="mt-1 min-h-[70px] resize-none" />
-        </div>
-      </div>
+      <div className="flex-1 space-y-6 p-5">
+        {/* Contact details */}
+        <WidgetSection label="Your details">
+          <div className="space-y-3">
+            <div>
+              <Label className="mb-1.5 block text-xs text-muted-foreground">Full name *</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" />
+            </div>
+            <div>
+              <Label className="mb-1.5 block text-xs text-muted-foreground">Email *</Label>
+              <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="jane@email.com" />
+              <p className="mt-1 text-[11px] text-muted-foreground">Confirmation will be sent here.</p>
+            </div>
+            <div>
+              <Label className="mb-1.5 block text-xs text-muted-foreground">Phone</Label>
+              <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 555 000 0000" />
+            </div>
+            <div>
+              <Label className="mb-1.5 block text-xs text-muted-foreground">Special requests</Label>
+              <Textarea value={requests} onChange={(e) => setRequests(e.target.value)} placeholder="Dietary needs, accessibility, celebration…" className="min-h-[70px] resize-none" />
+            </div>
+          </div>
+        </WidgetSection>
 
-      <div>
-        <Label className="text-xs text-muted-foreground">Payment method</Label>
-        <div className="mt-1.5 grid grid-cols-3 gap-2">
-          {[
-            { id: "CARD", label: "Card" },
-            { id: "APPLE", label: "Apple Pay" },
-            { id: "PAYPAL", label: "PayPal" },
-          ].map((m) => (
-            <button
-              key={m.id}
-              onClick={() => setPay(m.id)}
-              className={cn("rounded-lg border p-2.5 text-sm font-medium transition-colors", pay === m.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/40")}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-      </div>
+        {/* Payment */}
+        <WidgetSection label="Payment method">
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { id: "CARD", label: "Card" },
+              { id: "APPLE", label: "Apple Pay" },
+              { id: "PAYPAL", label: "PayPal" },
+            ].map((m) => (
+              <button
+                key={m.id}
+                onClick={() => setPay(m.id)}
+                className={cn(
+                  "rounded-lg border p-2.5 text-sm font-medium transition-colors",
+                  pay === m.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                )}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </WidgetSection>
 
-      <div className="rounded-xl bg-muted/50 p-3 text-sm">
-        <Row label="Subtotal" value={formatPrice(breakdown.subtotal + breakdown.addonsTotal)} />
-        <Row label="Taxes & fees" value={formatPrice(breakdown.taxesAndFees)} />
-        {breakdown.discount > 0 && <Row label="Discount" value={`-${formatPrice(breakdown.discount)}`} className="text-emerald-600" />}
-        <Separator className="my-2" />
-        <div className="flex justify-between font-semibold">
-          <span>Total due today</span>
-          <span className="gold-text text-lg">{formatPrice(breakdown.total)}</span>
+        {/* Order summary */}
+        <div className="rounded-xl border border-border bg-card p-4">
+          <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-foreground">Order summary</h4>
+          <div className="space-y-1.5 text-sm">
+            <Row label="Subtotal" value={formatPrice(breakdown.subtotal + breakdown.addonsTotal)} />
+            <Row label="Taxes & fees" value={formatPrice(breakdown.taxesAndFees)} />
+            {breakdown.discount > 0 && (
+              <Row label="Discount" value={`−${formatPrice(breakdown.discount)}`} className="text-emerald-600" />
+            )}
+          </div>
+          <Separator className="my-3" />
+          <div className="flex items-end justify-between">
+            <span className="text-sm font-medium text-muted-foreground">Total due today</span>
+            <span className="font-[family-name:var(--font-display)] text-2xl font-bold gold-text">
+              {formatPrice(breakdown.total)}
+            </span>
+          </div>
         </div>
-      </div>
 
-      <Button className="w-full bg-gold text-[var(--gold-foreground)] hover:bg-gold/90" disabled={!valid || loading} onClick={submit}>
-        {loading ? <><Loader2 size={16} className="animate-spin" /> Processing…</> : <>Confirm & pay {formatPrice(breakdown.total)}</>}
-      </Button>
-      <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-        <ShieldCheck size={13} className="text-emerald-500" /> 256-bit SSL secure payment
-      </p>
+        <Button
+          className="h-12 w-full bg-gold text-base font-semibold text-[var(--gold-foreground)] hover:bg-gold/90"
+          disabled={!valid || loading}
+          onClick={submit}
+        >
+          {loading ? (
+            <><Loader2 size={18} className="animate-spin" /> Processing…</>
+          ) : (
+            <>Confirm & pay {formatPrice(breakdown.total)}</>
+          )}
+        </Button>
+        <p className="-mt-3 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+          <ShieldCheck size={13} className="text-emerald-500" /> 256-bit SSL secure payment
+        </p>
+      </div>
     </div>
   );
 }

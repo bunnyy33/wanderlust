@@ -17,10 +17,21 @@ import { AIChat } from "./ai-chat";
 import { WishlistDrawer } from "./wishlist-drawer";
 import { AccountDialog } from "./account-dialog";
 import { AdminDashboard } from "./admin-dashboard";
+import { AdminLogin } from "./admin-login";
+import { WhatsAppFab } from "./whatsapp-fab";
 import type { DestinationT } from "@/lib/types";
 
 export function SiteApp({ destinations }: { destinations: DestinationT[] }) {
-  const { view, setView, theme, loadWishlist, wishlistLoaded } = useStore();
+  const {
+    view,
+    setView,
+    theme,
+    loadWishlist,
+    wishlistLoaded,
+    adminAuthed,
+    adminAuthChecked,
+    checkAdminAuth,
+  } = useStore();
   const [filter, setFilter] = useState<{ destination: string; type: string }>({
     destination: "all",
     type: "ALL",
@@ -37,9 +48,22 @@ export function SiteApp({ destinations }: { destinations: DestinationT[] }) {
   }, [wishlistLoaded, loadWishlist]);
 
   if (view === "admin") {
+    if (!adminAuthChecked) {
+      return <AdminLogin onExit={() => setView("guest")} />;
+    }
+    if (!adminAuthed) {
+      return <AdminLogin onExit={() => setView("guest")} />;
+    }
     return (
       <div className="min-h-screen bg-background">
-        <AdminDashboard onExit={() => setView("guest")} />
+        <AdminDashboard
+          onExit={() => setView("guest")}
+          onLogout={async () => {
+            const { adminLogout } = useStore.getState();
+            await adminLogout();
+            setView("guest");
+          }}
+        />
         <Footer />
       </div>
     );
@@ -74,6 +98,7 @@ export function SiteApp({ destinations }: { destinations: DestinationT[] }) {
       {/* Overlays */}
       <DetailDialog />
       <AIChat />
+      <WhatsAppFab />
       <WishlistDrawer />
       <AccountDialog />
     </div>

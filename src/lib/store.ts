@@ -19,6 +19,8 @@ interface UIState {
   sessionId: string;
   wishlist: WishKey[];
   wishlistLoaded: boolean;
+  adminAuthed: boolean;
+  adminAuthChecked: boolean;
   setView: (v: View) => void;
   openDetail: (target: DetailTarget) => void;
   closeDetail: () => void;
@@ -30,6 +32,9 @@ interface UIState {
   loadWishlist: () => Promise<void>;
   toggleWish: (kind: "EXPERIENCE" | "HOTEL", id: string) => Promise<boolean>;
   hasWish: (kind: "EXPERIENCE" | "HOTEL", id: string) => boolean;
+  checkAdminAuth: () => Promise<void>;
+  adminLogin: (password: string) => Promise<boolean>;
+  adminLogout: () => Promise<void>;
 }
 
 function genSession() {
@@ -49,6 +54,8 @@ export const useStore = create<UIState>()(
       sessionId: genSession(),
       wishlist: [],
       wishlistLoaded: false,
+      adminAuthed: false,
+      adminAuthChecked: false,
       setView: (v) => set({ view: v }),
       openDetail: (target) => set({ detail: target }),
       closeDetail: () => set({ detail: null }),
@@ -97,6 +104,42 @@ export const useStore = create<UIState>()(
         }
       },
       hasWish: (kind, id) => get().wishlist.includes(`${kind}:${id}`),
+      checkAdminAuth: async () => {
+        try {
+          const res = await fetch("/api/admin/auth");
+          const data = await res.json();
+          set({ adminAuthed: !!data.authed, adminAuthChecked: true });
+        } catch {
+          set({ adminAuthed: false, adminAuthChecked: true });
+        }
+      },
+      adminLogin: async (password) => {
+        try {
+          const res = await fetch("/api/admin/auth", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ password }),
+          });
+          if (!res.ok) return false;
+          const data = await res.json();
+          set({ adminAuthed: !!data.authed });
+          return !!data.authed;
+        } catch {
+          return false;
+        }
+      },
+      adminLogout: async () => {
+        try {
+          await fetch("/api/admin/auth", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "logout" }),
+          });
+        } catch {
+          /* ignore */
+        }
+        set({ adminAuthed: false });
+      },
     }),
     {
       name: "wanderlust-ui",
