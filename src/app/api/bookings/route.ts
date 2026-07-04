@@ -1,0 +1,127 @@
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { serializeBooking } from "@/lib/transform";
+import { generateReference } from "@/lib/format";
+
+// GET /api/bookings?email=  — list bookings by customer email
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const email = searchParams.get("email")?.trim().toLowerCase();
+  if (!email) {
+    return NextResponse.json({ bookings: [] });
+  }
+  const bookings = await db.booking.findMany({
+    where: { customerEmail: email },
+    orderBy: { createdAt: "desc" },
+    include: { experience: { include: { destination: true } }, hotel: { include: { destination: true } } },
+  });
+  return NextResponse.json({ bookings: bookings.map(serializeBooking) });
+}
+
+// POST /api/bookings — create a booking (transactional-ish availability check)
+export async function POST(req: NextRequest) {
+  const body = await req.json();
+  const {
+    type, // EXPERIENCE | HOTEL
+    experienceId,
+    hotelId,
+    checkInDate,
+    checkOutDate,
+    guests,
+    nights,
+    unitPrice,
+    addonsTotal = 0,
+    taxesAndFees = 0,
+    discount = 0,
+    totalAmount,
+    customerName,
+    customerEmail,
+    customerPhone,
+    specialRequests,
+    couponCode,
+    roomTypeName,
+  } = body;
+
+  if (!customerName || !customerEmail || !checkInDate) {
+    return NextResponse.json({ error: "Missing required booking fields" }, { status: 400 });
+  }
+  if (type === "EXPERIENCE" && !experienceId) {
+    return NextResponse.json({ error: "Experience is required" }, { status: 400 });
+  }
+  if (type === "HOTEL" && !hotelId) {
+    return NextResponse.json({ error: "Hotel is required" }, { status: 400 });
+  }
+
+  // Availability check for experiences (availability = remaining spots for the date)
+  if (type === "EXPERIENCE") {
+    const exp = await db.experience.findUnique({ where: { id: experienceId } });
+    if (!exp) return NextResponse.json({ error: "Experience not found" }, { status: 404 });
+    if (exp.availability < guests) {
+      return NextResponse.json(
+        { error: `Only ${exp.availability} spots remaining for this experience.` },
+        { status: 409 }
+      );
+    }
+  }
+
+  const reference = generateReference();
+
+  const booking = await db.booking.create({
+    data: {
+      reference,
+      type,
+      experienceId: type === "EXPERIENCE" ? experienceId : null,
+      hotelId: type === "HOTEL" ? hotelId : null,
+      checkInDate: new Date(checkInDate),
+      checkOutDate: checkOutDate ? new Date(checkOutDate) : null,
+      guests: parseInt(guests, 10) || 1,
+      nights: parseInt(nights, 10) || 1,
+      unitPrice: parseFloat(unitPrice),
+      addonsTotal: parseFloat(addonsTotal),
+      taxesAndFees: parseFloat(taxesAndFees),
+      discount: parseFloat(discount),
+      totalAmount: parseFloat(totalAmount),
+      status: "CONFIRMED",
+      paymentStatus: "PAID",
+      paymentMethod: "CARD",
+      customerName,
+      customerEmail: customerEmail.toLowerCase(),
+      customerPhone,
+      specialRequests,
+      couponCode,
+    },
+    include: { experience: { include: { destination: true } }, hotel: { include: { destination: true } } },
+  });
+
+  // Update experience availability + popularity (transactional decrement)
+  if (type === "EXPERIENCE") {
+    await db.experience.update({
+      where: { id: experienceId },
+      data: {
+        availability: { decrement: parseInt(guests, 10) || 1 },
+        bookedCount: { increment: parseInt(guests, 10) || 1 },
+      },
+    });
+  }
+
+  // Increment coupon usage
+  if (couponCode) {
+    await db.coupon.updateMany({
+      where: { code: couponCode },
+      data: { usedCount: { increment: 1 } },
+    });
+  }
+
+  // Store room type as special request note if hotel booking
+  if (type === "HOTEL" && roomTypeName && !specialRequests) {
+    await db.booking.update({
+      where: { id: booking.id },
+      data: { specialRequests: `Room: ${roomTypeName}` },
+    });
+  }
+
+  return NextResponse.json({
+    booking: serializeBooking({ ...booking, specialRequests: booking.specialRequests || (roomTypeName ? `Room: ${roomTypeName}` : null) }),
+    reference,
+  });
+}

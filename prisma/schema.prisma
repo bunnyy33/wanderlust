@@ -1,0 +1,166 @@
+// Wanderlust — Premium Tourism Booking Platform
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Destination {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  country     String
+  city        String?
+  region      String?
+  description String
+  longDescription String?
+  image       String
+  heroImage   String?
+  popular     Boolean  @default(false)
+  featured    Boolean  @default(false)
+  experiences Experience[]
+  hotels      Hotel[]
+  createdAt   DateTime @default(now())
+}
+
+model Experience {
+  id              String   @id @default(cuid())
+  title           String
+  slug            String   @unique
+  type            String   // TOUR | ACTIVITY | TRANSFER | CRUISE | ATTRACTION | ADVENTURE
+  description     String
+  longDescription String
+  destinationId   String
+  destination     Destination @relation(fields: [destinationId], references: [id])
+  price           Float
+  originalPrice   Float?
+  currency        String   @default("USD")
+  duration        String
+  durationHours   Float    @default(4)
+  rating          Float    @default(4.8)
+  reviewCount     Int      @default(0)
+  images          String   // JSON array of URLs
+  highlights      String   // JSON array of strings
+  itinerary       String   // JSON array of {time, title, description}
+  includes        String   // JSON array
+  excludes        String   // JSON array
+  groupSize       Int      @default(12)
+  language        String   @default("English")
+  meetingPoint    String?
+  cancellationPolicy String @default("Free cancellation up to 24 hours before the experience.")
+  availability    Int      @default(20)
+  bookedCount     Int      @default(0)
+  vendorName      String   @default("Wanderlust Verified Partner")
+  featured        Boolean  @default(false)
+  bestseller      Boolean  @default(false)
+  tags            String   @default("[]") // JSON array
+  latitude        Float?
+  longitude       Float?
+  status          String   @default("ACTIVE") // ACTIVE | DRAFT | ARCHIVED
+  bookings        Booking[]
+  reviews         Review[]
+  createdAt       DateTime @default(now())
+}
+
+model Hotel {
+  id            String   @id @default(cuid())
+  name          String
+  slug          String   @unique
+  description   String
+  longDescription String
+  destinationId String
+  destination   Destination @relation(fields: [destinationId], references: [id])
+  starRating    Int      @default(5)
+  pricePerNight Float
+  originalPrice Float?
+  currency      String   @default("USD")
+  images        String   // JSON array
+  amenities     String   // JSON array
+  roomTypes     String   // JSON array of {name, description, maxGuests, priceModifier}
+  rating        Float    @default(4.8)
+  reviewCount   Int      @default(0)
+  checkInTime   String   @default("14:00")
+  checkOutTime  String   @default("12:00")
+  address       String?
+  featured      Boolean  @default(false)
+  status        String   @default("ACTIVE")
+  bookings      Booking[]
+  reviews       Review[]
+  createdAt     DateTime @default(now())
+}
+
+model Booking {
+  id            String   @id @default(cuid())
+  reference     String   @unique
+  experienceId  String?
+  experience    Experience? @relation(fields: [experienceId], references: [id])
+  hotelId       String?
+  hotel         Hotel?     @relation(fields: [hotelId], references: [id])
+  type          String   // EXPERIENCE | HOTEL
+  checkInDate   DateTime
+  checkOutDate  DateTime?
+  guests        Int      @default(2)
+  nights        Int      @default(1)
+  unitPrice     Float
+  addonsTotal   Float    @default(0)
+  taxesAndFees  Float    @default(0)
+  discount      Float    @default(0)
+  totalAmount   Float
+  currency      String   @default("USD")
+  status        String   @default("CONFIRMED") // PENDING | CONFIRMED | COMPLETED | CANCELLED | REFUNDED
+  paymentStatus String   @default("PAID") // UNPAID | PAID | REFUNDED
+  paymentMethod String   @default("CARD")
+  customerName  String
+  customerEmail String
+  customerPhone String?
+  specialRequests String?
+  couponCode    String?
+  createdAt     DateTime @default(now())
+}
+
+model Review {
+  id            String   @id @default(cuid())
+  experienceId  String?
+  experience    Experience? @relation(fields: [experienceId], references: [id])
+  hotelId       String?
+  hotel         Hotel?     @relation(fields: [hotelId], references: [id])
+  authorName    String
+  authorAvatar  String?
+  authorCountry String?
+  rating        Float
+  title         String
+  comment       String
+  travelDate    String?
+  helpful       Int      @default(0)
+  verified      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+}
+
+model Coupon {
+  id            String   @id @default(cuid())
+  code          String   @unique
+  description   String
+  discountType  String   // PERCENT | FIXED
+  discountValue Float
+  minSpend      Float    @default(0)
+  maxDiscount   Float?
+  validFrom     DateTime @default(now())
+  validTo       DateTime?
+  usageLimit    Int      @default(1000)
+  usedCount     Int      @default(0)
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+}
+
+model Wishlist {
+  id            String   @id @default(cuid())
+  sessionId     String
+  experienceId  String?
+  hotelId       String?
+  createdAt     DateTime @default(now())
+}
