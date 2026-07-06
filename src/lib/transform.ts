@@ -60,6 +60,7 @@ export function serializeExperience(e: any): ExperienceT {
     language: e.language,
     meetingPoint: e.meetingPoint,
     cancellationPolicy: e.cancellationPolicy,
+    cancellationType: e.cancellationType || "FLEXIBLE",
     availability: e.availability,
     bookedCount: e.bookedCount,
     vendorName: e.vendorName,

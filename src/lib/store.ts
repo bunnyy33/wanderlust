@@ -21,6 +21,9 @@ interface UIState {
   wishlistLoaded: boolean;
   adminAuthed: boolean;
   adminAuthChecked: boolean;
+  currency: string;
+  user: { id: string; email: string; name: string; phone?: string | null } | null;
+  userChecked: boolean;
   setView: (v: View) => void;
   openDetail: (target: DetailTarget) => void;
   closeDetail: () => void;
@@ -35,6 +38,8 @@ interface UIState {
   checkAdminAuth: () => Promise<void>;
   adminLogin: (password: string) => Promise<boolean>;
   adminLogout: () => Promise<void>;
+  setCurrency: (c: string) => void;
+  checkUser: () => Promise<void>;
 }
 
 function genSession() {
@@ -56,6 +61,9 @@ export const useStore = create<UIState>()(
       wishlistLoaded: false,
       adminAuthed: false,
       adminAuthChecked: false,
+      currency: "USD",
+      user: null,
+      userChecked: false,
       setView: (v) => set({ view: v }),
       openDetail: (target) => set({ detail: target }),
       closeDetail: () => set({ detail: null }),
@@ -139,6 +147,16 @@ export const useStore = create<UIState>()(
           /* ignore */
         }
         set({ adminAuthed: false });
+      },
+      setCurrency: (c) => set({ currency: c }),
+      checkUser: async () => {
+        try {
+          const res = await fetch("/api/auth");
+          const data = await res.json();
+          set({ user: data.user || null, userChecked: true });
+        } catch {
+          set({ user: null, userChecked: true });
+        }
       },
     }),
     {

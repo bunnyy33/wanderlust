@@ -16,21 +16,17 @@ import { DetailDialog } from "./detail-dialog";
 import { AIChat } from "./ai-chat";
 import { WishlistDrawer } from "./wishlist-drawer";
 import { AccountDialog } from "./account-dialog";
-import { AdminDashboard } from "./admin-dashboard";
-import { AdminLogin } from "./admin-login";
 import { WhatsAppFab } from "./whatsapp-fab";
 import type { DestinationT } from "@/lib/types";
 
 export function SiteApp({ destinations }: { destinations: DestinationT[] }) {
   const {
-    view,
-    setView,
     theme,
     loadWishlist,
     wishlistLoaded,
-    adminAuthed,
-    adminAuthChecked,
-    checkAdminAuth,
+    user,
+    userChecked,
+    checkUser,
   } = useStore();
   const [filter, setFilter] = useState<{ destination: string; type: string }>({
     destination: "all",
@@ -47,27 +43,10 @@ export function SiteApp({ destinations }: { destinations: DestinationT[] }) {
     if (!wishlistLoaded) loadWishlist();
   }, [wishlistLoaded, loadWishlist]);
 
-  if (view === "admin") {
-    if (!adminAuthChecked) {
-      return <AdminLogin onExit={() => setView("guest")} />;
-    }
-    if (!adminAuthed) {
-      return <AdminLogin onExit={() => setView("guest")} />;
-    }
-    return (
-      <div className="min-h-screen bg-background">
-        <AdminDashboard
-          onExit={() => setView("guest")}
-          onLogout={async () => {
-            const { adminLogout } = useStore.getState();
-            await adminLogout();
-            setView("guest");
-          }}
-        />
-        <Footer />
-      </div>
-    );
-  }
+  // Load customer session on mount
+  useEffect(() => {
+    if (!userChecked) checkUser();
+  }, [userChecked, checkUser]);
 
   return (
     <div className="flex min-h-screen flex-col">

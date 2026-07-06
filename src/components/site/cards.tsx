@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import Image from "next/image";
 import { Heart, Clock, MapPin, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -8,6 +9,31 @@ import { PriceTag, RatingPill, TypeBadge, Stars } from "./ui-bits";
 import { formatCompact } from "@/lib/format";
 import { useStore } from "@/lib/store";
 import { toast } from "sonner";
+
+// Track recently-viewed experiences in localStorage.
+const RECENT_KEY = "wl_recent";
+const MAX_RECENT = 8;
+
+export function pushRecent(experience: ExperienceT) {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = localStorage.getItem(RECENT_KEY);
+    const list: ExperienceT[] = raw ? JSON.parse(raw) : [];
+    const filtered = list.filter((e) => e.id !== experience.id);
+    const slim = { ...experience, itinerary: [] };
+    const next = [slim, ...filtered].slice(0, MAX_RECENT);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+    window.dispatchEvent(new Event("recent-changed"));
+  } catch { /* ignore */ }
+}
+
+export function getRecent(): ExperienceT[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(RECENT_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
 
 export function ExperienceCard({
   experience,
@@ -25,14 +51,13 @@ export function ExperienceCard({
     toast.success(added ? "Saved to wishlist" : "Removed from wishlist");
   };
 
-  return (
-    <article
-      onClick={() => onOpen?.(experience.id)}
-      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
-    >
+  const href = experience.slug ? `/tours/${experience.slug}` : undefined;
+
+  const CardInner = (
+    <>
       <div className="relative aspect-[4/3] overflow-hidden">
         <Image
-          src={experience.images[0]}
+          src={experience.images[0] || "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1200&q=80"}
           alt={experience.title}
           fill
           sizes="(max-width:768px) 100vw, (max-width:1200px) 50vw, 33vw"
@@ -94,6 +119,19 @@ export function ExperienceCard({
           </span>
         </div>
       </div>
+    </>
+  );
+
+  if (href) {
+    return (
+      <Link href={href} onClick={() => pushRecent(experience)} className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+        {CardInner}
+      </Link>
+    );
+  }
+  return (
+    <article onClick={() => onOpen?.(experience.id)} className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+      {CardInner}
     </article>
   );
 }
@@ -114,11 +152,10 @@ export function HotelCard({
     toast.success(added ? "Saved to wishlist" : "Removed from wishlist");
   };
 
-  return (
-    <article
-      onClick={() => onOpen?.(hotel.id)}
-      className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 hover:-translate-y-1 hover:shadow-xl"
-    >
+  const href = hotel.slug ? `/hotels/${hotel.slug}` : undefined;
+
+  const CardInner = (
+    <>
       <div className="relative aspect-[4/3] overflow-hidden">
         <Image
           src={hotel.images[0]}
@@ -194,6 +231,19 @@ export function HotelCard({
           </span>
         </div>
       </div>
+    </>
+  );
+
+  if (href) {
+    return (
+      <Link href={href} className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+        {CardInner}
+      </Link>
+    );
+  }
+  return (
+    <article onClick={() => onOpen?.(hotel.id)} className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+      {CardInner}
     </article>
   );
 }

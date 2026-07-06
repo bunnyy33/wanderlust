@@ -10,7 +10,6 @@ import {
   Sparkles,
   Moon,
   Sun,
-  Shield,
   Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -34,14 +33,14 @@ const NAV = [
 
 export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
   const {
-    view,
-    setView,
     setWishlistOpen,
     setAccountOpen,
+    setAuthOpen,
     theme,
     toggleTheme,
   } = useStore();
   const wishlistCount = useStore((s) => s.wishlist.length);
+  const user = useStore((s) => s.user);
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -71,7 +70,6 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
         {/* Logo */}
         <button
           onClick={() => {
-            setView("guest");
             window.scrollTo({ top: 0, behavior: "smooth" });
           }}
           className="flex items-center gap-2"
@@ -85,7 +83,7 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
         </button>
 
         {/* Desktop nav */}
-        {view === "guest" && (
+        {(
           <nav className="hidden items-center gap-1 lg:flex">
             {NAV.map((n) => (
               <button
@@ -101,7 +99,7 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
 
         {/* Actions */}
         <div className="flex items-center gap-1.5">
-          {view === "guest" && (
+          {(
             <Button
               variant="ghost"
               size="icon"
@@ -122,7 +120,7 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
             {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
           </Button>
 
-          {view === "guest" && (
+          {(
             <>
               <Button
                 variant="ghost"
@@ -161,17 +159,6 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
             </>
           )}
 
-          {/* Admin toggle */}
-          <Button
-            variant={view === "admin" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setView(view === "admin" ? "guest" : "admin")}
-            className="hidden gap-1.5 sm:inline-flex"
-          >
-            <Shield size={15} />
-            {view === "admin" ? "Exit Admin" : "Admin"}
-          </Button>
-
           {/* Mobile menu */}
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
@@ -186,8 +173,7 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
                 </SheetTitle>
               </SheetHeader>
               <div className="mt-6 flex flex-col gap-1">
-                {view === "guest" &&
-                  NAV.map((n) => (
+                {NAV.map((n) => (
                     <button
                       key={n.target}
                       onClick={() => scrollTo(n.target)}
@@ -225,18 +211,6 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
                     </Badge>
                   )}
                 </button>
-                <div className="my-2 h-px bg-border" />
-                <Button
-                  variant={view === "admin" ? "default" : "outline"}
-                  onClick={() => {
-                    setView(view === "admin" ? "guest" : "admin");
-                    setMobileOpen(false);
-                  }}
-                  className="m-3 gap-1.5"
-                >
-                  <Shield size={15} />
-                  {view === "admin" ? "Exit Admin" : "Admin Console"}
-                </Button>
               </div>
             </SheetContent>
           </Sheet>

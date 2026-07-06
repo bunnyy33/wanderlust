@@ -54,6 +54,7 @@ export interface ExperienceT {
   language: string;
   meetingPoint: string | null;
   cancellationPolicy: string;
+  cancellationType: "FLEXIBLE" | "MODERATE" | "STRICT";
   availability: number;
   bookedCount: number;
   vendorName: string;

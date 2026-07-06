@@ -1478,10 +1478,24 @@ async function main() {
     const destId = destMap.get(e.destinationSlug);
     if (!destId) continue;
     const { destinationSlug, ...data } = e;
+    // Infer cancellation type: attractions (park tickets) & transfers = STRICT (no refund),
+    // cruises & activities = MODERATE (48h), tours & adventures = FLEXIBLE (24h).
+    const cancellationType =
+      data.type === "ATTRACTION" || data.type === "TRANSFER" ? "STRICT"
+      : data.type === "CRUISE" || data.type === "ACTIVITY" ? "MODERATE"
+      : "FLEXIBLE";
+    const cancellationPolicy =
+      cancellationType === "STRICT"
+        ? "Non-refundable. This experience cannot be cancelled, amended or refunded."
+        : cancellationType === "MODERATE"
+        ? "Free cancellation up to 48 hours before the experience. Within 48 hours, non-refundable."
+        : "Free cancellation up to 24 hours before the experience. Within 24 hours, non-refundable.";
     await db.experience.create({
       data: {
         ...data,
         destinationId: destId,
+        cancellationType,
+        cancellationPolicy,
         images: JSON.stringify(data.images),
         highlights: JSON.stringify(data.highlights),
         itinerary: JSON.stringify(data.itinerary),

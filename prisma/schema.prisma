@@ -53,6 +53,7 @@ model Experience {
   language        String   @default("English")
   meetingPoint    String?
   cancellationPolicy String @default("Free cancellation up to 24 hours before the experience.")
+  cancellationType String  @default("FLEXIBLE") // FLEXIBLE (24h) | MODERATE (48h) | STRICT (no refund)
   availability    Int      @default(20)
   bookedCount     Int      @default(0)
   vendorName      String   @default("Wanderlust Verified Partner")
