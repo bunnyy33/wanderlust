@@ -27,6 +27,7 @@ import {
   LogOut,
   Mail,
   MapPin,
+  MessageSquare,
   Plane,
   RefreshCw,
   RotateCcw,
@@ -122,7 +123,7 @@ interface AdminStats {
   recentBookings: RecentBooking[];
 }
 
-type SectionId = "overview" | "bookings" | "catalog" | "analytics" | "ai" | "notifications";
+type SectionId = "overview" | "bookings" | "catalog" | "analytics" | "ai" | "notifications" | "chats";
 
 /* ------------------------------------------------------------------ */
 /* Formatters                                                         */
@@ -256,6 +257,7 @@ const SECTIONS: {
   { id: "catalog", label: "Catalog", icon: BookOpen },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
   { id: "ai", label: "AI Insights", icon: Sparkles },
+  { id: "chats", label: "AI Chats", icon: MessageSquare },
   { id: "notifications", label: "Notifications", icon: Mail },
 ];
 
@@ -597,6 +599,7 @@ export function AdminDashboard({
           {section === "analytics" && <AnalyticsSection />}
           {section === "ai" && <AIInsightsSection />}
           {section === "notifications" && <NotificationsSection />}
+          {section === "chats" && <ChatLogsSection />}
         </main>
       </div>
     </div>
@@ -2196,6 +2199,97 @@ interface EmailItem {
   status: string;
   relatedRef: string | null;
   createdAt: string;
+}
+
+/* ------------------------------------------------------------------ */
+/* AI Chat Logs                                                       */
+/* ------------------------------------------------------------------ */
+
+interface ChatLogItem {
+  id: string;
+  sessionId: string;
+  userMessage: string;
+  aiReply: string;
+  ipAddress: string | null;
+  createdAt: string;
+}
+
+function ChatLogsSection() {
+  const [chats, setChats] = useState<ChatLogItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/chats?limit=100");
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setChats(data.chats);
+    } catch {
+      toast.error("Failed to load chat logs");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  return (
+    <div className="space-y-6">
+      <SectionTitle
+        title="AI Chat Monitor"
+        subtitle="Review conversations between customers and your AI concierge. Ensure it's selling from your catalog."
+        icon={MessageSquare}
+      />
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard label="Total conversations" value={chats.length} icon={<MessageSquare className="size-5 text-gold" />} />
+        <StatCard label="Unique sessions" value={new Set(chats.map((c) => c.sessionId)).size} icon={<Users className="size-5 text-gold" />} />
+        <StatCard label="Most recent" value={chats[0] ? format(new Date(chats[0].createdAt), "MMM d, h:mm a") : "—"} icon={<Clock className="size-5 text-gold" />} />
+      </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <CardTitle className="text-base font-semibold">Chat logs</CardTitle>
+          <Button variant="outline" size="sm" onClick={load}>
+            <RefreshCw className="size-3.5" /> Refresh
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="space-y-2">
+              {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-20 w-full rounded-lg" />)}
+            </div>
+          ) : chats.length === 0 ? (
+            <div className="flex flex-col items-center py-12 text-center">
+              <MessageSquare className="size-8 text-muted-foreground/40" />
+              <p className="mt-2 text-sm font-medium">No chats yet</p>
+              <p className="text-xs text-muted-foreground">Customer AI conversations will appear here.</p>
+            </div>
+          ) : (
+            <div className="max-h-[600px] space-y-3 overflow-y-auto">
+              {chats.map((c) => (
+                <div key={c.id} className="rounded-xl border border-border bg-card/60 p-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="font-mono text-[11px] text-muted-foreground">{c.sessionId.slice(0, 16)}…</span>
+                    <span className="text-[11px] text-muted-foreground">{format(new Date(c.createdAt), "MMM d, h:mm a")}{c.ipAddress && ` · ${c.ipAddress}`}</span>
+                  </div>
+                  <div className="mb-2 rounded-lg bg-primary/5 p-2.5">
+                    <span className="text-[10px] font-semibold uppercase text-primary">Customer</span>
+                    <p className="text-sm">{c.userMessage}</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/30 p-2.5">
+                    <span className="text-[10px] font-semibold uppercase text-gold">AI reply</span>
+                    <p className="whitespace-pre-wrap text-sm text-foreground/80">{c.aiReply}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 function NotificationsSection() {

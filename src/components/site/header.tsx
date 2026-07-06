@@ -159,21 +159,6 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setWishlistOpen(true)}
-                className="relative"
-                aria-label="Wishlist"
-              >
-                <Heart size={18} />
-                {wishlistCount > 0 && (
-                  <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-gold px-1 text-[10px] font-bold text-[var(--gold-foreground)]">
-                    {wishlistCount}
-                  </span>
-                )}
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="icon"
                 onClick={() => setCartOpen(true)}
                 className="relative"
                 aria-label="Cart"

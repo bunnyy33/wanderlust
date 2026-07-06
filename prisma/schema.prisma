@@ -158,6 +158,16 @@ model Coupon {
   createdAt     DateTime @default(now())
 }
 
+model ChatLog {
+  id         String   @id @default(cuid())
+  sessionId  String
+  userMessage String
+  aiReply    String
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+}
+
 model Wishlist {
   id            String   @id @default(cuid())
   sessionId     String

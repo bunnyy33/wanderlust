@@ -102,10 +102,10 @@ export const api = {
     body: JSON.stringify(data),
   }),
 
-  aiChat: (messages: ChatMessage[]) =>
+  aiChat: (messages: ChatMessage[], sessionId?: string) =>
     jfetch<{ reply: string }>("/api/ai/chat", {
       method: "POST",
-      body: JSON.stringify({ messages }),
+      body: JSON.stringify({ messages, sessionId }),
     }),
 
   aiRecommendations: (data: {

@@ -16,7 +16,7 @@ const SUGGESTIONS = [
 ];
 
 export function AIChat() {
-  const { chatOpen, setChatOpen } = useStore();
+  const { chatOpen, setChatOpen, sessionId } = useStore();
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
@@ -40,7 +40,7 @@ export function AIChat() {
     setInput("");
     setLoading(true);
     try {
-      const { reply } = await api.aiChat(next.slice(-8));
+      const { reply } = await api.aiChat(next.slice(-8), sessionId);
       setMessages((m) => [...m, { role: "assistant", content: reply }]);
     } catch {
       setMessages((m) => [

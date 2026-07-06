@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { Compass, Mail, Phone, MapPin, Instagram, Facebook, Twitter, Youtube } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -7,6 +8,15 @@ import { toast } from "sonner";
 import { useStore } from "@/lib/store";
 
 export function Footer() {
+  const router = useRouter();
+  const goSection = (id: string) => {
+    if (window.location.pathname !== "/") {
+      router.push(`/#${id}`);
+    } else {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+    }
+  };
+
   return (
     <footer className="mt-auto bg-[oklch(0.22_0.04_195)] text-white">
       <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
@@ -46,15 +56,11 @@ export function Footer() {
               Explore
             </h4>
             <ul className="mt-4 space-y-2.5 text-sm text-white/80">
-              {["Destinations", "Tours & Activities", "Luxury Hotels", "Airport Transfers", "AI Trip Planner"].map(
-                (l) => (
-                  <li key={l}>
-                    <a href="#" className="transition-colors hover:text-gold">
-                      {l}
-                    </a>
-                  </li>
-                )
-              )}
+              <li><button onClick={() => goSection("destinations")} className="transition-colors hover:text-gold">Destinations</button></li>
+              <li><button onClick={() => goSection("experiences")} className="transition-colors hover:text-gold">Tours & Activities</button></li>
+              <li><button onClick={() => goSection("hotels")} className="transition-colors hover:text-gold">Luxury Hotels</button></li>
+              <li><button onClick={() => goSection("experiences")} className="transition-colors hover:text-gold">Airport Transfers</button></li>
+              <li><button onClick={() => goSection("planner")} className="transition-colors hover:text-gold">AI Trip Planner</button></li>
             </ul>
           </div>
 
@@ -64,13 +70,11 @@ export function Footer() {
               Company
             </h4>
             <ul className="mt-4 space-y-2.5 text-sm text-white/80">
-              {["About Us", "Become a Partner", "Careers", "Press", "Sustainability"].map((l) => (
-                <li key={l}>
-                  <a href="#" className="transition-colors hover:text-gold">
-                    {l}
-                  </a>
-                </li>
-              ))}
+              <li><button onClick={() => useStore.getState().setInquiryOpen(true)} className="transition-colors hover:text-gold">About Us</button></li>
+              <li><button onClick={() => useStore.getState().setInquiryOpen(true)} className="transition-colors hover:text-gold">Become a Partner</button></li>
+              <li><button onClick={() => useStore.getState().setInquiryOpen(true)} className="transition-colors hover:text-gold">Careers</button></li>
+              <li><button onClick={() => useStore.getState().setInquiryOpen(true)} className="transition-colors hover:text-gold">Press</button></li>
+              <li><button onClick={() => useStore.getState().setInquiryOpen(true)} className="transition-colors hover:text-gold">Sustainability</button></li>
             </ul>
           </div>
 
@@ -119,10 +123,10 @@ export function Footer() {
         <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-white/10 pt-6 text-xs text-white/60 sm:flex-row">
           <p>© {new Date().getFullYear()} Wanderlust Travel Co. All rights reserved.</p>
           <div className="flex gap-5">
-            <a href="#" className="hover:text-gold">Privacy</a>
-            <a href="#" className="hover:text-gold">Terms</a>
-            <a href="#" className="hover:text-gold">Cookies</a>
-            <a href="#" className="hover:text-gold">Trust & Safety</a>
+            <button onClick={() => useStore.getState().setInquiryOpen(true)} className="hover:text-gold">Privacy</button>
+            <button onClick={() => useStore.getState().setInquiryOpen(true)} className="hover:text-gold">Terms</button>
+            <button onClick={() => useStore.getState().setInquiryOpen(true)} className="hover:text-gold">Cookies</button>
+            <button onClick={() => useStore.getState().setInquiryOpen(true)} className="hover:text-gold">Trust & Safety</button>
           </div>
         </div>
       </div>
