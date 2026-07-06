@@ -73,7 +73,7 @@ export function WhyUs() {
         <div className="mt-14 grid grid-cols-2 gap-6 rounded-2xl border border-white/10 bg-white/5 p-8 md:grid-cols-4">
           {[
             { v: "180K+", l: "Happy travelers" },
-            { v: "120+", l: "Destinations" },
+            { v: "18+", l: "Destinations" },
             { v: "4.9/5", l: "Average rating" },
             { v: "$240M+", l: "Trips booked" },
           ].map((s) => (

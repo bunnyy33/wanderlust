@@ -86,10 +86,6 @@ export function AdminLogin({ onExit }: { onExit?: () => void }) {
             </button>
           )}
         </form>
-
-        <p className="mt-4 text-center text-xs text-white/40">
-          Demo password: <code className="rounded bg-white/10 px-1.5 py-0.5 text-white/70">wanderlust-admin-2024</code>
-        </p>
       </div>
     </div>
   );

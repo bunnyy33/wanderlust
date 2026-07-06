@@ -18,7 +18,9 @@ function WhatsAppIcon({ size = 24 }: { size?: number }) {
 }
 
 // Configure your WhatsApp number here (international format, no +).
-const WHATSAPP_NUMBER = "15555550199"; // demo number
+// TODO: Replace with your real WhatsApp number (international format, no +, no spaces)
+// Example for UAE: 971501234567
+const WHATSAPP_NUMBER = "971501234567";
 const WHATSAPP_MESSAGE = "Hi Wanderlust team! I'd like help planning a trip.";
 
 export function WhatsAppFab() {

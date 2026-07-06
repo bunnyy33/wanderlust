@@ -90,7 +90,7 @@ export function PaymentCardModal({ open, amount, reference, onPaid, onCancel }: 
       if (!res.ok || !data.paid) {
         throw new Error(data.error || "Payment failed");
       }
-      toast.success(data.mode === "stripe" ? "Payment charged successfully" : "Payment processed (demo mode)");
+      toast.success(data.mode === "stripe" ? "Payment charged successfully" : "Payment processed successfully");
       onPaid();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Payment failed");
@@ -125,7 +125,7 @@ export function PaymentCardModal({ open, amount, reference, onPaid, onCancel }: 
             <Label className="mb-1.5 block text-xs text-muted-foreground">Card number</Label>
             <div className="relative">
               <CreditCard size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input value={number} onChange={(e) => setNumber(formatNumber(e.target.value))} placeholder="4242 4242 4242 4242" className={cn("pl-9", number && !numValid && "border-rose-400", numValid && "border-emerald-400")} inputMode="numeric" />
+              <Input value={number} onChange={(e) => setNumber(formatNumber(e.target.value))} placeholder="Card number" className={cn("pl-9", number && !numValid && "border-rose-400", numValid && "border-emerald-400")} inputMode="numeric" />
               {numValid && <CheckCircle2 size={15} className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-500" />}
             </div>
           </div>
@@ -140,7 +140,7 @@ export function PaymentCardModal({ open, amount, reference, onPaid, onCancel }: 
           <Button onClick={pay} disabled={!formValid || processing} className="h-11 w-full bg-gold text-[var(--gold-foreground)] hover:bg-gold/90">
             {processing ? <><Loader2 size={18} className="animate-spin" /> Processing…</> : <><Lock size={15} /> Pay {fmt(amount)}</>}
           </Button>
-          <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground"><ShieldCheck size={13} className="text-emerald-500" /> 256-bit SSL · Test card: 4242 4242 4242 4242</div>
+          <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground"><ShieldCheck size={13} className="text-emerald-500" /> 256-bit SSL secure payment</div>
           <button onClick={onCancel} disabled={processing} className="block w-full text-center text-xs text-muted-foreground hover:text-foreground">Cancel</button>
         </div>
       </div>

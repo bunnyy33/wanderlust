@@ -55,7 +55,7 @@ export function Hero({
             effortlessly yours.
           </h1>
           <p className="mt-6 max-w-xl text-lg text-white/85">
-            Handpicked tours, luxury hotels and private transfers across 120+ destinations.
+            Handpicked tours, luxury hotels and private transfers across the world's most stunning destinations.
             Plan smarter with our concierge team and book with total confidence.
           </p>
 
@@ -89,7 +89,7 @@ export function Hero({
             </div>
             <div className="flex items-center gap-2 text-sm">
               <Globe2 size={18} className="text-gold" />
-              <span>120+ destinations</span>
+              <span>18+ destinations</span>
             </div>
           </div>
         </div>
