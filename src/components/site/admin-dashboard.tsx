@@ -2220,6 +2220,7 @@ function AiKnowledgePanel() {
   const [systemPrompt, setSystemPrompt] = useState("");
   const [businessInfo, setBusinessInfo] = useState("");
   const [persona, setPersona] = useState("Wanderlust Concierge");
+  const [plannerPrompt, setPlannerPrompt] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -2231,6 +2232,7 @@ function AiKnowledgePanel() {
       setSystemPrompt(settings.systemPrompt || "");
       setBusinessInfo(settings.businessInfo || "");
       setPersona(settings.persona || "Wanderlust Concierge");
+      setPlannerPrompt(settings.plannerPrompt || "");
     } catch {
       /* ignore */
     } finally {
@@ -2246,10 +2248,10 @@ function AiKnowledgePanel() {
       const res = await fetch("/api/admin/ai-settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ systemPrompt, businessInfo, persona }),
+        body: JSON.stringify({ systemPrompt, businessInfo, persona, plannerPrompt }),
       });
       if (!res.ok) throw new Error();
-      toast.success("Concierge knowledge updated — applies to new chats immediately.");
+      toast.success("Knowledge updated — applies to new chats & trip plans immediately.");
     } catch {
       toast.error("Failed to save settings");
     } finally {
@@ -2301,6 +2303,21 @@ function AiKnowledgePanel() {
                 onChange={(e) => setSystemPrompt(e.target.value)}
                 placeholder={"Example:\n- Always mention our price-match guarantee when discussing pricing\n- If someone asks about Dubai Marina, recommend the yacht tour specifically\n- Never promise specific hotel room numbers"}
                 className="min-h-[100px] resize-y font-mono text-xs"
+              />
+            </div>
+
+            <div className="rounded-lg border border-gold/20 bg-gold/5 p-4">
+              <Label className="mb-1.5 block text-xs font-medium text-foreground">
+                Trip Planner instructions
+              </Label>
+              <p className="mb-2 text-xs text-muted-foreground">
+                Custom rules for the "Plan my trip" feature on the homepage. Control how itineraries are built — budget buffer, must-include tours, hotel preferences, pacing, etc.
+              </p>
+              <Textarea
+                value={plannerPrompt}
+                onChange={(e) => setPlannerPrompt(e.target.value)}
+                placeholder={"Example:\n- Always include a desert safari on day 1 for Dubai trips\n- Add a 15% buffer to the budget estimate for taxes and extras\n- Prefer 5-star hotels from our catalog\n- Keep day 1 light (arrival day) — suggest only an evening activity\n- For family trips, include at least one kid-friendly activity per day\n- Recommend airport transfer for the first and last day\n- Maximum 2 activities per day to keep it relaxed"}
+                className="min-h-[140px] resize-y font-mono text-xs"
               />
             </div>
 

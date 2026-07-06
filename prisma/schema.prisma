@@ -159,11 +159,12 @@ model Coupon {
 }
 
 model AiSettings {
-  id           String   @id @default("singleton")
-  systemPrompt String   @default("")  // Custom instructions/knowledge the AI follows
-  businessInfo String   @default("")  // Policies, hours, contact, FAQ answers
-  persona      String   @default("Wanderlust Concierge")  // Display name
-  updatedAt    DateTime @updatedAt
+  id            String   @id @default("singleton")
+  systemPrompt  String   @default("")  // Custom instructions for chat concierge
+  businessInfo  String   @default("")  // Policies, hours, contact, FAQ answers
+  persona       String   @default("Wanderlust Concierge")  // Display name
+  plannerPrompt String   @default("")  // Custom instructions for trip planner
+  updatedAt     DateTime @updatedAt
 }
 
 model ChatLog {

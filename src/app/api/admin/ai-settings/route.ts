@@ -27,11 +27,13 @@ export async function PUT(req: NextRequest) {
       systemPrompt: body.systemPrompt || "",
       businessInfo: body.businessInfo || "",
       persona: body.persona || "Wanderlust Concierge",
+      plannerPrompt: body.plannerPrompt || "",
     },
     update: {
       systemPrompt: body.systemPrompt ?? undefined,
       businessInfo: body.businessInfo ?? undefined,
       persona: body.persona ?? undefined,
+      plannerPrompt: body.plannerPrompt ?? undefined,
     },
   });
   return NextResponse.json({ settings });

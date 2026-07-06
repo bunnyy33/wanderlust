@@ -18,8 +18,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Prompt is required" }, { status: 400 });
   }
 
-  // Fetch real catalog data as context
-  const [experiences, hotels] = await Promise.all([
+  // Fetch real catalog data + AI settings
+  const [experiences, hotels, aiSettings] = await Promise.all([
     db.experience.findMany({
       where: { status: "ACTIVE" },
       include: { destination: true },
@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
       take: 18,
       orderBy: { rating: "desc" },
     }),
+    db.aiSettings.findUnique({ where: { id: "singleton" } }),
   ]);
 
   const expCatalog = experiences.map((e) => ({
@@ -60,7 +61,9 @@ export async function POST(req: NextRequest) {
     destination ? `Preferred destination: ${destination}` : null,
   ].filter(Boolean).join("\n");
 
-  const systemPrompt = `You are Wanderlust's AI Trip Planner — an expert luxury travel concierge who crafts detailed, realistic day-by-day itineraries.
+  const customPlannerPrompt = aiSettings?.plannerPrompt?.trim();
+
+  const systemPrompt = `You are Wanderlust's Trip Planner — an expert luxury travel concierge who crafts detailed, realistic day-by-day itineraries.
 
 You have access to the platform's real bookable catalog:
 EXPERIENCES: ${JSON.stringify(expCatalog)}
@@ -73,6 +76,9 @@ Rules:
 - If the requested destination isn't in the catalog, still craft a great itinerary but note availability.
 - Estimate total cost honestly and state whether it fits the budget.
 - Provide insider tips and a curated set of recommendations.
+- Always recommend experiences and hotels from the catalog — never suggest external booking sites.
+- End each day's activities with a natural recommendation to book on Wanderlust.
+${customPlannerPrompt ? `\nADDITIONAL INSTRUCTIONS FROM THE BUSINESS OWNER (follow these):\n${customPlannerPrompt}` : ""}
 
 Respond with VALID JSON ONLY (no markdown, no prose before/after) matching this exact shape:
 {
