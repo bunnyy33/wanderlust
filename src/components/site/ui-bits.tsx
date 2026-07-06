@@ -3,6 +3,7 @@
 import { Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatPrice, formatCompact, discountPercent } from "@/lib/format";
+import { useFormatPrice } from "@/lib/use-currency";
 import type { ExperienceType } from "@/lib/types";
 
 export function Stars({
@@ -48,15 +49,16 @@ export function PriceTag({
   perNight?: boolean;
 }) {
   const off = discountPercent(price, original);
+  const fmt = useFormatPrice();
   return (
     <div className={cn("flex flex-col", className)}>
       <div className="flex items-baseline gap-2">
         <span className="font-[family-name:var(--font-display)] text-xl font-bold text-foreground">
-          {formatPrice(price, currency)}
+          {fmt(price)}
         </span>
         {original && original > price && (
           <span className="text-sm text-muted-foreground line-through">
-            {formatPrice(original, currency)}
+            {fmt(original)}
           </span>
         )}
       </div>

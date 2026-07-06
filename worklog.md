@@ -180,3 +180,27 @@ Verification (Agent Browser):
 
 Stage Summary:
 - All 5 requested features working and browser-verified. Lint clean.
+
+---
+Task ID: RESTORE-UAE-SEED
+Agent: full-stack-developer
+Task: Restore UAE-focused catalog seed.
+
+Work Log:
+- Read worklog.md, prisma/schema.prisma (confirmed new cancellationType field with FLEXIBLE default) and prisma/seed.ts (21-experience international set).
+- Verified schema's cancellationType values: FLEXIBLE (24h) | MODERATE (48h) | STRICT (no refund).
+- Rewrote /home/z/my-project/prisma/seed.ts (~2000 lines) with a UAE-focused catalog:
+  • 18 destinations: 10 UAE (Dubai, Abu Dhabi, Sharjah, Ras Al Khaimah, Fujairah, Ajman, Al Ain, Hatta, Musandam (Khasob), Khor Fakkan) + 8 international (Maldives, Santorini, Bali, Swiss Alps, Marrakech, Kyoto, Amalfi Coast, Paris).
+  • 77 experiences: 65 UAE + 12 international. Dubai (36) covers Burj Khalifa (standard+fast-track+SKY 148), Museum of the Future, Dubai Aquarium, The Lost Chambers, Aquaventure, Wild Wadi, Miracle Garden, Garden Glow, Global Village, IMG Worlds, 5 desert safaris (morning/evening/overnight/quad/premium), 2 dhow cruises (Marina+Creek), private yacht, helicopter, hot air balloon, jet ski, flyboard, parasailing, Ski Dubai, Dubai Parks & Resorts, Green Planet, Old Dubai Heritage, Hop-On Hop-Off, The View at The Palm, Yellow Boats, Madame Tussauds, La Perle by Dragone, Private Airport Transfer, plus Dubai Frame extra. Abu Dhabi (12): Sheikh Zayed Grand Mosque, Louvre, Ferrari World, Warner Bros, Yas 4-park, Emirates Palace tour, Qasr Al Watan, National Aquarium, City Tour, Corniche+Heritage, Yas Marina Circuit, Falcon Hospital. Other emirates (15+2 extra): Sharjah City Tour, Sharjah Aquarium, Al Noor Island, Jebel Jais + Jais Flight zipline, RAK Desert Safari, Fujairah East Coast Tour, Snoopy Island snorkeling, Khor Fakkan beach, Musandam Dhow Cruise full day, Musandam overnight camping, Hatta Mountain Tour, Hatta MTB rental, Ajman City+Museum, East Coast Scuba Dive, Sir Bani Yas wildlife, plus Fujairah Fort & Friday Market and Al Ain City Tour. International 12 kept from original seed (Maldives villa, Maldives sandbank, Santorini caldera cruise, Santorini wine tour, Bali Mount Batur, Bali Ubud tour, Jungfrau, Glacier Express, Marrakech Agafay, Kyoto highlights, Amalfi coast cruise, Paris Eiffel + cruise).
+  • 21 hotels: 10 UAE (Atlantis The Royal, Burj Al Arab, Armani Hotel, Atlantis The Palm, Rixos The Palm, Anantara The Palm, Bab al Shams — Dubai; Emirates Palace, Qasr Al Sarab, Anantara Sir Bani Yas — Abu Dhabi) + 11 international (Soneva Fushi, Conrad Maldives, Canaves Oia, Katikies, Capella Ubud, Bulgari Bali, Victoria Jungfrau, La Mamounia, Hoshinoya Tokyo, Le Sirenuse, Le Bristol Paris).
+  • Reused known-working Unsplash photo IDs via img() helper + IMG constant map (Dubai skyline, desert dunes, desert camp, marina/yacht, creek/abra, beach/ocean, waterpark, aquarium, helicopter, balloon, mountain + the original international IDs).
+  • Realistic USD pricing per spec: Burj Khalifa $45/$65/$135, desert safari $35-$220, yacht $480, helicopter $200, balloon $320, Ferrari World $85, Sheikh Zayed Grand Mosque $35. ~25% of experiences have an originalPrice ~25-35% higher for discount displays.
+  • Each experience has duration + durationHours, rating (4.4-5.0), reviewCount (220-5621), 4-5 highlights, 3-5 itinerary items, 3-5 includes/excludes, groupSize, meetingPoint, availability (4-50), bookedCount (220-4821), vendorName (realistic UAE operators — Arabian Adventures, Emaar Entertainment, Atlantis Resorts, Jumeirah Group, Farah Experiences, Platinum Heritage, Marine Luxury Charters, Dubai Balloon Adventures, etc.), tags, featured (~15) & bestseller (~20) flags.
+  • Cancellation logic per spec: main() infers cancellationType from type — ATTRACTION/TRANSFER → STRICT, CRUISE/ACTIVITY → MODERATE, TOUR/ADVENTURE → FLEXIBLE — and writes a matching cancellationPolicy string.
+  • Reviews bumped to 60 (from 42), reviewers expanded to 25, coupons extended to 6 (added UAE15). Kept the post-insert reviewCount/rating aggregation.
+  • main() clears wishlist, review, emailLog, booking, experience, hotel, destination, coupon (in FK-safe order) before re-seeding.
+- Ran seed: `bun run prisma/seed.ts` → printed "✓ 77 experiences seeded" (>= 75), 21 hotels, 60 reviews, 6 coupons, 18 destinations — clean run, no errors.
+- Verified counts via bun inline script: UAE exp: 65 | total: 77 | hotels: 21 | UAE dests: 10 — all thresholds met (UAE >= 60 ✓, total >= 75 ✓).
+
+Stage Summary:
+- UAE experiences: 65, total: 77, hotels: 21, destinations: 18 (10 UAE + 8 international). Seed runs cleanly; catalog is fully UAE-focused with realistic operators, pricing, itineraries and STRICT/MODERATE/FLEXIBLE cancellation policies auto-set by experience type.

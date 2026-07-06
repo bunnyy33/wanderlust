@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/sheet";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { CurrencySwitcher } from "./currency-switcher";
 
 const NAV = [
   { label: "Destinations", target: "destinations" },
@@ -132,6 +133,10 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
                 <Sparkles size={18} className="text-gold" />
               </Button>
 
+              <div className="hidden sm:block">
+                <CurrencySwitcher />
+              </div>
+
               <Button
                 variant="ghost"
                 size="icon"
@@ -147,15 +152,25 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
                 )}
               </Button>
 
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setAccountOpen(true)}
-                aria-label="Account"
-                className="hidden sm:inline-flex"
-              >
-                <User size={18} />
-              </Button>
+              {user ? (
+                <button
+                  onClick={() => setAccountOpen(true)}
+                  className="grid h-9 w-9 place-items-center rounded-full bg-primary text-sm font-semibold text-primary-foreground transition-transform hover:scale-105"
+                  aria-label="My account"
+                  title={`${user.name} · ${user.email}`}
+                >
+                  {user.name.charAt(0).toUpperCase()}
+                </button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setAuthOpen(true)}
+                  className="hidden sm:inline-flex"
+                >
+                  <User size={16} /> Sign in
+                </Button>
+              )}
             </>
           )}
 

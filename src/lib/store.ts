@@ -40,6 +40,11 @@ interface UIState {
   adminLogout: () => Promise<void>;
   setCurrency: (c: string) => void;
   checkUser: () => Promise<void>;
+  signup: (name: string, email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<boolean>;
+  logout: () => Promise<void>;
+  setAuthOpen: (o: boolean) => void;
+  authOpen: boolean;
 }
 
 function genSession() {
@@ -64,6 +69,7 @@ export const useStore = create<UIState>()(
       currency: "USD",
       user: null,
       userChecked: false,
+      authOpen: false,
       setView: (v) => set({ view: v }),
       openDetail: (target) => set({ detail: target }),
       closeDetail: () => set({ detail: null }),
@@ -158,6 +164,37 @@ export const useStore = create<UIState>()(
           set({ user: null, userChecked: true });
         }
       },
+      signup: async (name, email, password) => {
+        try {
+          const res = await fetch("/api/auth", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "signup", name, email, password }),
+          });
+          if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Signup failed"); }
+          const data = await res.json();
+          set({ user: data.user });
+          return true;
+        } catch (e) { throw e; }
+      },
+      login: async (email, password) => {
+        try {
+          const res = await fetch("/api/auth", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "login", email, password }),
+          });
+          if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Login failed"); }
+          const data = await res.json();
+          set({ user: data.user });
+          return true;
+        } catch (e) { throw e; }
+      },
+      logout: async () => {
+        try {
+          await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "logout" }) });
+        } catch { /* ignore */ }
+        set({ user: null });
+      },
+      setAuthOpen: (o) => set({ authOpen: o }),
     }),
     {
       name: "wanderlust-ui",

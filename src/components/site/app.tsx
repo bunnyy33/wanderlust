@@ -16,6 +16,7 @@ import { DetailDialog } from "./detail-dialog";
 import { AIChat } from "./ai-chat";
 import { WishlistDrawer } from "./wishlist-drawer";
 import { AccountDialog } from "./account-dialog";
+import { AuthDialog } from "./auth-dialog";
 import { WhatsAppFab } from "./whatsapp-fab";
 import type { DestinationT } from "@/lib/types";
 
@@ -80,6 +81,7 @@ export function SiteApp({ destinations }: { destinations: DestinationT[] }) {
       <WhatsAppFab />
       <WishlistDrawer />
       <AccountDialog />
+      <AuthDialog />
     </div>
   );
 }
