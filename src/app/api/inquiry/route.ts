@@ -5,10 +5,24 @@ import { sendEmail } from "@/lib/mailer";
 // POST /api/inquiry — customer sends an inquiry, logged + emailed to concierge
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { name, email, phone, subject, message } = body;
+  const name = String(body.name || "").trim();
+  const email = String(body.email || "").trim().toLowerCase();
+  const phone = String(body.phone || "").trim();
+  const subject = String(body.subject || "General inquiry");
+  const message = String(body.message || "").trim();
 
-  if (!name || !email || !message) {
-    return NextResponse.json({ error: "Name, email and message are required" }, { status: 400 });
+  // Validate — reject dummy/empty data
+  if (name.length < 2) {
+    return NextResponse.json({ error: "Please enter your full name" }, { status: 400 });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return NextResponse.json({ error: "Please enter a valid email address" }, { status: 400 });
+  }
+  if (message.length < 10) {
+    return NextResponse.json({ error: "Message must be at least 10 characters" }, { status: 400 });
+  }
+  if (phone && phone.replace(/\D/g, "").length < 7) {
+    return NextResponse.json({ error: "Please enter a valid phone number" }, { status: 400 });
   }
 
   const html = `
