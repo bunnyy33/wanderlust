@@ -17,6 +17,8 @@ import { AIChat } from "./ai-chat";
 import { WishlistDrawer } from "./wishlist-drawer";
 import { AccountDialog } from "./account-dialog";
 import { AuthDialog } from "./auth-dialog";
+import { InquiryDialog } from "./inquiry-dialog";
+import { CartDrawer } from "./cart-drawer";
 import { WhatsAppFab } from "./whatsapp-fab";
 import type { DestinationT } from "@/lib/types";
 
@@ -28,6 +30,8 @@ export function SiteApp({ destinations }: { destinations: DestinationT[] }) {
     user,
     userChecked,
     checkUser,
+    inquiryOpen,
+    setInquiryOpen,
   } = useStore();
   const [filter, setFilter] = useState<{ destination: string; type: string }>({
     destination: "all",
@@ -80,8 +84,10 @@ export function SiteApp({ destinations }: { destinations: DestinationT[] }) {
       <AIChat />
       <WhatsAppFab />
       <WishlistDrawer />
+      <CartDrawer />
       <AccountDialog />
       <AuthDialog />
+      <InquiryDialog open={inquiryOpen} onOpenChange={setInquiryOpen} />
     </div>
   );
 }

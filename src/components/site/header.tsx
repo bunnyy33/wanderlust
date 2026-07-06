@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Compass,
   Heart,
@@ -11,6 +13,8 @@ import {
   Moon,
   Sun,
   Search,
+  ShoppingCart,
+  MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -33,14 +37,18 @@ const NAV = [
 ];
 
 export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
+  const router = useRouter();
   const {
     setWishlistOpen,
     setAccountOpen,
     setAuthOpen,
+    setInquiryOpen,
+    setCartOpen,
     theme,
     toggleTheme,
   } = useStore();
   const wishlistCount = useStore((s) => s.wishlist.length);
+  const cartCount = useStore((s) => s.cart.length);
   const user = useStore((s) => s.user);
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -52,10 +60,23 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  const scrollTo = (id: string) => {
+  // Navigate to homepage section (works from any page)
+  const goToSection = (id: string) => {
     setMobileOpen(false);
-    const el = document.getElementById(id);
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (window.location.pathname !== "/") {
+      router.push(`/#${id}`);
+    } else {
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  };
+
+  const goHome = () => {
+    if (window.location.pathname !== "/") {
+      router.push("/");
+    } else {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   return (
@@ -70,9 +91,7 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         {/* Logo */}
         <button
-          onClick={() => {
-            window.scrollTo({ top: 0, behavior: "smooth" });
-          }}
+          onClick={goHome}
           className="flex items-center gap-2"
         >
           <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-primary-foreground">
@@ -89,7 +108,7 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
             {NAV.map((n) => (
               <button
                 key={n.target}
-                onClick={() => scrollTo(n.target)}
+                onClick={() => goToSection(n.target)}
                 className="rounded-md px-3 py-2 text-sm font-medium text-foreground/80 transition-colors hover:bg-accent hover:text-foreground"
               >
                 {n.label}
@@ -126,7 +145,7 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => scrollTo("planner")}
+                onClick={() => goToSection("planner")}
                 aria-label="AI Planner"
                 className="hidden sm:inline-flex"
               >
@@ -150,6 +169,30 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
                     {wishlistCount}
                   </span>
                 )}
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setCartOpen(true)}
+                className="relative"
+                aria-label="Cart"
+              >
+                <ShoppingCart size={18} />
+                {cartCount > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                    {cartCount}
+                  </span>
+                )}
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setInquiryOpen(true)}
+                className="hidden md:inline-flex"
+              >
+                <MessageSquare size={16} /> Inquire
               </Button>
 
               {user ? (
@@ -191,14 +234,14 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
                 {NAV.map((n) => (
                     <button
                       key={n.target}
-                      onClick={() => scrollTo(n.target)}
+                      onClick={() => goToSection(n.target)}
                       className="rounded-lg px-4 py-3 text-left text-sm font-medium hover:bg-accent"
                     >
                       {n.label}
                     </button>
                   ))}
                 <button
-                  onClick={() => scrollTo("planner")}
+                  onClick={() => goToSection("planner")}
                   className="flex items-center gap-2 rounded-lg px-4 py-3 text-left text-sm font-medium hover:bg-accent"
                 >
                   <Sparkles size={16} className="text-gold" /> AI Trip Planner
@@ -225,6 +268,21 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
                       {wishlistCount}
                     </Badge>
                   )}
+                </button>
+                <button
+                  onClick={() => { setCartOpen(true); setMobileOpen(false); }}
+                  className="flex items-center gap-2 rounded-lg px-4 py-3 text-left text-sm font-medium hover:bg-accent"
+                >
+                  <ShoppingCart size={16} /> Cart
+                  {cartCount > 0 && (
+                    <Badge className="ml-auto bg-primary text-primary-foreground">{cartCount}</Badge>
+                  )}
+                </button>
+                <button
+                  onClick={() => { setInquiryOpen(true); setMobileOpen(false); }}
+                  className="flex items-center gap-2 rounded-lg px-4 py-3 text-left text-sm font-medium hover:bg-accent"
+                >
+                  <MessageSquare size={16} /> Send Inquiry
                 </button>
               </div>
             </SheetContent>

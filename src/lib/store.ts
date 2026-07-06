@@ -45,6 +45,14 @@ interface UIState {
   logout: () => Promise<void>;
   setAuthOpen: (o: boolean) => void;
   authOpen: boolean;
+  inquiryOpen: boolean;
+  setInquiryOpen: (o: boolean) => void;
+  cartOpen: boolean;
+  setCartOpen: (o: boolean) => void;
+  cart: { experienceId: string; title: string; image: string; price: number; date: string; guests: number; destination?: string }[];
+  addToCart: (item: { experienceId: string; title: string; image: string; price: number; date: string; guests: number; destination?: string }) => void;
+  removeFromCart: (experienceId: string) => void;
+  clearCart: () => void;
 }
 
 function genSession() {
@@ -70,6 +78,9 @@ export const useStore = create<UIState>()(
       user: null,
       userChecked: false,
       authOpen: false,
+      inquiryOpen: false,
+      cartOpen: false,
+      cart: [],
       setView: (v) => set({ view: v }),
       openDetail: (target) => set({ detail: target }),
       closeDetail: () => set({ detail: null }),
@@ -195,12 +206,22 @@ export const useStore = create<UIState>()(
         set({ user: null });
       },
       setAuthOpen: (o) => set({ authOpen: o }),
+      setInquiryOpen: (o) => set({ inquiryOpen: o }),
+      setCartOpen: (o) => set({ cartOpen: o }),
+      addToCart: (item) => set((s) => {
+        // Replace if already in cart (same experience), otherwise add
+        const filtered = s.cart.filter((c) => c.experienceId !== item.experienceId);
+        return { cart: [...filtered, item] };
+      }),
+      removeFromCart: (experienceId) => set((s) => ({ cart: s.cart.filter((c) => c.experienceId !== experienceId) })),
+      clearCart: () => set({ cart: [] }),
     }),
     {
       name: "wanderlust-ui",
       partialize: (s) => ({
         sessionId: s.sessionId,
         theme: s.theme,
+        cart: s.cart,
       }),
     }
   )

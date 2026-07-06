@@ -114,7 +114,7 @@ export function ExperiencesSection({
         </div>
 
         {/* Quick filter chips */}
-        <div className="mb-6 flex flex-wrap gap-2">
+        <div className="mb-4 flex flex-wrap gap-2">
           {TYPES.map((t) => (
             <button
               key={t.value}
@@ -127,6 +127,36 @@ export function ExperiencesSection({
               }
             >
               {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Destination chips with All option */}
+        <div className="mb-6 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mr-1">Destination:</span>
+          <button
+            onClick={() => setDestination("all")}
+            className={
+              "rounded-full px-3 py-1 text-xs font-medium transition-colors " +
+              (destination === "all"
+                ? "bg-primary text-primary-foreground"
+                : "bg-background text-foreground hover:bg-accent border border-border")
+            }
+          >
+            All
+          </button>
+          {destinations.slice(0, 12).map((d) => (
+            <button
+              key={d.id}
+              onClick={() => setDestination(d.slug)}
+              className={
+                "rounded-full px-3 py-1 text-xs font-medium transition-colors " +
+                (destination === d.slug
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-background text-foreground hover:bg-accent border border-border")
+              }
+            >
+              {d.name}
             </button>
           ))}
         </div>

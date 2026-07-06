@@ -6,7 +6,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   Star, MapPin, Clock, Users, Check, X, Heart, CalendarDays, ChevronRight,
-  Loader2, ShieldCheck, PartyPopper, Copy, ArrowRight,
+  Loader2, ShieldCheck, PartyPopper, Copy, ArrowRight, ShoppingCart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -253,6 +253,7 @@ function BookingSidebar({
   inWish: boolean; onWish: () => void; onCta: () => void;
 }) {
   const fmt = useFormatPrice();
+  const addToCart = useStore((s) => s.addToCart);
   const availability = experience.availability;
   return (
     <div className="rounded-2xl border border-border bg-card shadow-lg">
@@ -319,6 +320,24 @@ function BookingSidebar({
 
         <div className="flex gap-2">
           <Button variant="outline" size="icon" onClick={onWish} className={cn("shrink-0", inWish && "border-rose-400 text-rose-500")}><Heart size={16} className={cn(inWish && "fill-current")} /></Button>
+          <Button
+            variant="outline"
+            className="h-12 shrink-0 gap-1.5"
+            onClick={() => {
+              addToCart({
+                experienceId: experience.id,
+                title: experience.title,
+                image: experience.images[0] || "",
+                price: experience.price,
+                date,
+                guests,
+                destination: experience.destination?.name,
+              });
+              toast.success("Added to cart");
+            }}
+          >
+            <ShoppingCart size={16} /> <span className="hidden sm:inline">Add to cart</span>
+          </Button>
           <Button className="h-12 flex-1 bg-primary text-base font-semibold text-primary-foreground hover:bg-primary/90" onClick={onCta}>Reserve now <ChevronRight size={18} /></Button>
         </div>
       </div>

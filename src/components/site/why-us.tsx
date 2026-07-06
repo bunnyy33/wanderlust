@@ -37,7 +37,7 @@ const FEATURES = [
 
 export function WhyUs() {
   return (
-    <section className="bg-primary py-20 text-primary-foreground">
+    <section className="bg-[oklch(0.22_0.04_195)] py-20 text-white">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mb-12 max-w-2xl">
           <p className="mb-2 text-sm font-semibold uppercase tracking-widest text-gold">
@@ -46,7 +46,7 @@ export function WhyUs() {
           <h2 className="font-[family-name:var(--font-display)] text-3xl font-bold sm:text-4xl">
             Trusted by 180,000+ travelers worldwide
           </h2>
-          <p className="mt-4 text-primary-foreground/80">
+          <p className="mt-4 text-white/80">
             We obsess over the details so you don't have to. Every experience is
             hand-verified, every partner vetted, every booking protected.
           </p>
@@ -64,7 +64,7 @@ export function WhyUs() {
               <h3 className="font-[family-name:var(--font-display)] text-lg font-semibold">
                 {f.title}
               </h3>
-              <p className="mt-1.5 text-sm text-primary-foreground/75">{f.desc}</p>
+              <p className="mt-1.5 text-sm text-white/75">{f.desc}</p>
             </div>
           ))}
         </div>
@@ -81,7 +81,7 @@ export function WhyUs() {
               <div className="font-[family-name:var(--font-display)] text-4xl font-bold gold-text">
                 {s.v}
               </div>
-              <div className="mt-1 text-sm text-primary-foreground/70">{s.l}</div>
+              <div className="mt-1 text-sm text-white/70">{s.l}</div>
             </div>
           ))}
         </div>

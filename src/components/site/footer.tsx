@@ -4,10 +4,11 @@ import { Compass, Mail, Phone, MapPin, Instagram, Facebook, Twitter, Youtube } f
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useStore } from "@/lib/store";
 
 export function Footer() {
   return (
-    <footer className="mt-auto bg-primary text-primary-foreground">
+    <footer className="mt-auto bg-[oklch(0.22_0.04_195)] text-white">
       <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
         <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-5">
           {/* Brand */}
@@ -20,7 +21,7 @@ export function Footer() {
                 Wander<span className="gold-text">lust</span>
               </span>
             </div>
-            <p className="mt-4 max-w-sm text-sm text-primary-foreground/80">
+            <p className="mt-4 max-w-sm text-sm text-white/80">
               Curated luxury travel experiences across the world's most stunning
               destinations. Handpicked tours, premium hotels and seamless
               transfers — booked with confidence.
@@ -44,7 +45,7 @@ export function Footer() {
             <h4 className="font-[family-name:var(--font-display)] text-sm font-semibold uppercase tracking-wider text-gold">
               Explore
             </h4>
-            <ul className="mt-4 space-y-2.5 text-sm text-primary-foreground/80">
+            <ul className="mt-4 space-y-2.5 text-sm text-white/80">
               {["Destinations", "Tours & Activities", "Luxury Hotels", "Airport Transfers", "AI Trip Planner"].map(
                 (l) => (
                   <li key={l}>
@@ -62,7 +63,7 @@ export function Footer() {
             <h4 className="font-[family-name:var(--font-display)] text-sm font-semibold uppercase tracking-wider text-gold">
               Company
             </h4>
-            <ul className="mt-4 space-y-2.5 text-sm text-primary-foreground/80">
+            <ul className="mt-4 space-y-2.5 text-sm text-white/80">
               {["About Us", "Become a Partner", "Careers", "Press", "Sustainability"].map((l) => (
                 <li key={l}>
                   <a href="#" className="transition-colors hover:text-gold">
@@ -78,7 +79,7 @@ export function Footer() {
             <h4 className="font-[family-name:var(--font-display)] text-sm font-semibold uppercase tracking-wider text-gold">
               Stay in the loop
             </h4>
-            <p className="mt-4 text-sm text-primary-foreground/80">
+            <p className="mt-4 text-sm text-white/80">
               Exclusive deals & travel inspiration, monthly.
             </p>
             <form
@@ -99,12 +100,14 @@ export function Footer() {
                 Join
               </Button>
             </form>
-            <ul className="mt-6 space-y-2 text-sm text-primary-foreground/80">
-              <li className="flex items-center gap-2">
-                <Mail size={14} className="text-gold" /> concierge@wanderlust.travel
+            <ul className="mt-6 space-y-2 text-sm text-white/80">
+              <li>
+                <button onClick={() => useStore.getState().setInquiryOpen(true)} className="flex items-center gap-2 transition-colors hover:text-gold">
+                  <Mail size={14} className="text-gold" /> concierge@wanderlust.travel
+                </button>
               </li>
               <li className="flex items-center gap-2">
-                <Phone size={14} className="text-gold" /> +1 (800) 555-0199
+                <Phone size={14} className="text-gold" /> +971 4 555 0199
               </li>
               <li className="flex items-center gap-2">
                 <MapPin size={14} className="text-gold" /> 24/7 Global Concierge
@@ -113,7 +116,7 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-white/10 pt-6 text-xs text-primary-foreground/60 sm:flex-row">
+        <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-white/10 pt-6 text-xs text-white/60 sm:flex-row">
           <p>© {new Date().getFullYear()} Wanderlust Travel Co. All rights reserved.</p>
           <div className="flex gap-5">
             <a href="#" className="hover:text-gold">Privacy</a>
