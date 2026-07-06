@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { serializeHotel, serializeReview } from "@/lib/transform";
 import { HotelPageView } from "@/components/site/hotel-page";
 
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const hotel = await db.hotel.findUnique({ where: { slug }, include: { destination: true } });

@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { serializeExperience, serializeReview } from "@/lib/transform";
 import { TourPageView } from "@/components/site/tour-page";
 
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const exp = await db.experience.findUnique({ where: { slug }, include: { destination: true } });
