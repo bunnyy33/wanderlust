@@ -60,7 +60,7 @@ export function Footer() {
               <li><button onClick={() => goSection("experiences")} className="transition-colors hover:text-gold">Tours & Activities</button></li>
               <li><button onClick={() => goSection("hotels")} className="transition-colors hover:text-gold">Luxury Hotels</button></li>
               <li><button onClick={() => goSection("experiences")} className="transition-colors hover:text-gold">Airport Transfers</button></li>
-              <li><button onClick={() => goSection("planner")} className="transition-colors hover:text-gold">AI Trip Planner</button></li>
+              <li><button onClick={() => goSection("planner")} className="transition-colors hover:text-gold">Trip Planner</button></li>
             </ul>
           </div>
 

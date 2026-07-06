@@ -15,8 +15,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Messages required" }, { status: 400 });
   }
 
-  // Fetch catalog to ground answers
-  const [experiences, hotels, destinations] = await Promise.all([
+  // Fetch catalog + AI settings to ground answers
+  const [experiences, hotels, destinations, aiSettings] = await Promise.all([
     db.experience.findMany({
       where: { status: "ACTIVE" },
       take: 40,
@@ -34,16 +34,22 @@ export async function POST(req: NextRequest) {
       select: { id: true, name: true, pricePerNight: true, starRating: true, slug: true, destination: { select: { name: true } } },
     }),
     db.destination.findMany({ select: { name: true, country: true } }),
+    db.aiSettings.findUnique({ where: { id: "singleton" } }),
   ]);
 
   const catalogBrief = `Bookable destinations on our platform: ${destinations.map((d) => d.name).join(", ")}.
 Popular experiences (all bookable on our site): ${experiences.map((e) => `${e.title} in ${e.destination?.name} ($${e.price}, ${e.duration}, ${e.rating}★)`).join("; ")}.
 Popular hotels (all bookable on our site): ${hotels.map((h) => `${h.name} in ${h.destination?.name} ($${h.pricePerNight}/night, ${h.starRating}★)`).join("; ")}.`;
 
-  const systemPrompt = `You are the Wanderlust AI Travel Concierge — a warm, expert sales assistant for our premium travel booking platform (wanderlust.travel). Your #1 job is to HELP CUSTOMERS BOOK EXPERIENCES, HOTELS AND TOURS ON OUR PLATFORM.
+  // Build the system prompt — base rules + admin custom knowledge
+  const customPrompt = aiSettings?.systemPrompt?.trim();
+  const businessInfo = aiSettings?.businessInfo?.trim();
+
+  const systemPrompt = `You are the Wanderlust Concierge — a warm, expert travel assistant for our premium travel booking platform. Your #1 job is to HELP CUSTOMERS BOOK EXPERIENCES, HOTELS AND TOURS ON OUR PLATFORM.
 
 ${catalogBrief}
 
+${businessInfo ? `BUSINESS KNOWLEDGE (use this to answer policy/FAQ/business questions):\n${businessInfo}\n` : ""}
 CRITICAL RULES (never break these):
 1. ALWAYS recommend experiences, hotels and tours from our catalog above. Every recommendation must be something bookable on our site.
 2. NEVER suggest customers visit other websites, official sites, third-party platforms or "search online." If they ask about something we don't have, suggest a similar experience we DO have.
@@ -54,7 +60,8 @@ CRITICAL RULES (never break these):
 7. If asked about something outside travel, gently bring it back to trip planning.
 8. DO NOT use markdown formatting (no asterisks, no **, no *, no #, no backticks). Write in plain text with line breaks. Use dashes (-) for lists if needed.
 9. Keep replies under 120 words. Be specific and actionable.
-10. If a customer seems interested, always end with a gentle call-to-action: "Would you like me to help you book this?" or "Shall I add this to your cart?"`;
+10. If a customer seems interested, always end with a gentle call-to-action: "Would you like me to help you book this?" or "Shall I add this to your cart?"
+11. For complex requests (large group quotes, custom itineraries, complaints), say "Let me connect you with our concierge team" and suggest they use the inquiry form.${customPrompt ? `\n\nADDITIONAL INSTRUCTIONS FROM THE BUSINESS OWNER (follow these):\n${customPrompt}` : ""}`;
 
   const mapped = [
     { role: "assistant", content: systemPrompt },

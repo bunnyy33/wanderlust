@@ -42,7 +42,7 @@ export function RecommendationsSection() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="mb-8 text-center">
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-gold/30 bg-gold/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-gold">
-            <Sparkles size={14} /> AI Recommendations
+            <Sparkles size={14} /> Smart Picks
           </div>
           <h2 className="font-[family-name:var(--font-display)] text-3xl font-bold sm:text-4xl">
             What's your <span className="gold-text">travel vibe</span>?

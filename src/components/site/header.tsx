@@ -33,7 +33,7 @@ const NAV = [
   { label: "Destinations", target: "destinations" },
   { label: "Experiences", target: "experiences" },
   { label: "Hotels", target: "hotels" },
-  { label: "AI Planner", target: "planner" },
+  { label: "Trip Planner", target: "planner" },
 ];
 
 export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
@@ -146,7 +146,7 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
                 variant="ghost"
                 size="icon"
                 onClick={() => goToSection("planner")}
-                aria-label="AI Planner"
+                aria-label="Trip Planner"
                 className="hidden sm:inline-flex"
               >
                 <Sparkles size={18} className="text-gold" />
@@ -229,7 +229,7 @@ export function Header({ onSearchClick }: { onSearchClick?: () => void }) {
                   onClick={() => goToSection("planner")}
                   className="flex items-center gap-2 rounded-lg px-4 py-3 text-left text-sm font-medium hover:bg-accent"
                 >
-                  <Sparkles size={16} className="text-gold" /> AI Trip Planner
+                  <Sparkles size={16} className="text-gold" /> Trip Planner
                 </button>
                 <button
                   onClick={() => {

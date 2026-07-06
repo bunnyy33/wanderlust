@@ -21,7 +21,7 @@ export function AIChat() {
     {
       role: "assistant",
       content:
-        "Hi! I'm your Wanderlust AI concierge ✨ Ask me anything about destinations, experiences, hotels, weather, or travel tips. How can I help plan your trip?",
+        "Hi! I'm your Wanderlust concierge ✨ Ask me anything about destinations, experiences, hotels, or travel tips. How can I help plan your trip?",
     },
   ]);
   const [input, setInput] = useState("");
@@ -60,7 +60,7 @@ export function AIChat() {
         className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-primary px-4 py-3 text-primary-foreground shadow-lg transition-all hover:scale-105 hover:shadow-xl"
         aria-label="AI Assistant"
       >
-        {chatOpen ? <X size={20} /> : <><Sparkles size={20} className="text-gold" /><span className="hidden text-sm font-semibold sm:inline">AI Concierge</span></>}
+        {chatOpen ? <X size={20} /> : <><Sparkles size={20} className="text-gold" /><span className="hidden text-sm font-semibold sm:inline">Concierge</span></>}
         {!chatOpen && (
           <span className="absolute -right-1 -top-1 flex h-3 w-3">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-gold opacity-75" />
@@ -80,7 +80,7 @@ export function AIChat() {
             <div>
               <div className="font-[family-name:var(--font-display)] font-semibold">Wanderlust Concierge</div>
               <div className="flex items-center gap-1 text-xs text-primary-foreground/70">
-                <span className="h-2 w-2 rounded-full bg-emerald-400" /> Online · AI-powered
+                <span className="h-2 w-2 rounded-full bg-emerald-400" /> Online now
               </div>
             </div>
             <button onClick={() => setChatOpen(false)} className="ml-auto rounded-full p-1.5 hover:bg-white/10">

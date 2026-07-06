@@ -67,7 +67,7 @@ export function PlannerSection({ destinations }: { destinations: DestinationT[] 
       <div className="relative mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
         <div className="mb-10 text-center">
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-gold/30 bg-gold/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-gold">
-            <Sparkles size={14} /> AI Trip Planner
+            <Sparkles size={14} /> Trip Planner
           </div>
           <h2 className="font-[family-name:var(--font-display)] text-3xl font-bold sm:text-5xl">
             Tell us your dream trip.

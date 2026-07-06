@@ -158,6 +158,14 @@ model Coupon {
   createdAt     DateTime @default(now())
 }
 
+model AiSettings {
+  id           String   @id @default("singleton")
+  systemPrompt String   @default("")  // Custom instructions/knowledge the AI follows
+  businessInfo String   @default("")  // Policies, hours, contact, FAQ answers
+  persona      String   @default("Wanderlust Concierge")  // Display name
+  updatedAt    DateTime @updatedAt
+}
+
 model ChatLog {
   id         String   @id @default(cuid())
   sessionId  String

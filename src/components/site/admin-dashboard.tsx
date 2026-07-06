@@ -55,6 +55,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import {
   Select,
@@ -2214,6 +2216,107 @@ interface ChatLogItem {
   createdAt: string;
 }
 
+function AiKnowledgePanel() {
+  const [systemPrompt, setSystemPrompt] = useState("");
+  const [businessInfo, setBusinessInfo] = useState("");
+  const [persona, setPersona] = useState("Wanderlust Concierge");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/ai-settings");
+      if (!res.ok) throw new Error();
+      const { settings } = await res.json();
+      setSystemPrompt(settings.systemPrompt || "");
+      setBusinessInfo(settings.businessInfo || "");
+      setPersona(settings.persona || "Wanderlust Concierge");
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/ai-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ systemPrompt, businessInfo, persona }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Concierge knowledge updated — applies to new chats immediately.");
+    } catch {
+      toast.error("Failed to save settings");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base font-semibold">Concierge Knowledge & Instructions</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading ? (
+          <Skeleton className="h-40 w-full rounded-lg" />
+        ) : (
+          <>
+            <div>
+              <Label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                Concierge display name
+              </Label>
+              <Input value={persona} onChange={(e) => setPersona(e.target.value)} placeholder="Wanderlust Concierge" />
+            </div>
+
+            <div>
+              <Label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                Business knowledge & FAQs
+              </Label>
+              <p className="mb-2 text-xs text-muted-foreground">
+                Add policies, hours, contact info, discount rules, FAQ answers — anything the concierge should know. This is sent to the AI with every conversation.
+              </p>
+              <Textarea
+                value={businessInfo}
+                onChange={(e) => setBusinessInfo(e.target.value)}
+                placeholder={"Example:\n- Business hours: 9 AM - 9 PM GST, 7 days a week\n- Group discount: 10% off for groups of 8+\n- WhatsApp: +971 50 123 4567\n- Refund policy: Full refund up to 24h before for flexible tours, no refund for park tickets\n- We do NOT offer flights — only tours, hotels and transfers\n- For large group bookings, direct them to the inquiry form"}
+                className="min-h-[140px] resize-y font-mono text-xs"
+              />
+            </div>
+
+            <div>
+              <Label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+                Extra instructions (advanced)
+              </Label>
+              <p className="mb-2 text-xs text-muted-foreground">
+                Custom rules the concierge must follow. E.g. "Always mention the group discount" or "Don't discuss specific hotel room availability."
+              </p>
+              <Textarea
+                value={systemPrompt}
+                onChange={(e) => setSystemPrompt(e.target.value)}
+                placeholder={"Example:\n- Always mention our price-match guarantee when discussing pricing\n- If someone asks about Dubai Marina, recommend the yacht tour specifically\n- Never promise specific hotel room numbers"}
+                className="min-h-[100px] resize-y font-mono text-xs"
+              />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">Changes apply to new conversations immediately.</p>
+              <Button onClick={save} disabled={saving} size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90">
+                {saving ? <><Loader2 className="size-3.5 animate-spin" /> Saving…</> : <>Save knowledge</>}
+              </Button>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function ChatLogsSection() {
   const [chats, setChats] = useState<ChatLogItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2237,10 +2340,12 @@ function ChatLogsSection() {
   return (
     <div className="space-y-6">
       <SectionTitle
-        title="AI Chat Monitor"
-        subtitle="Review conversations between customers and your AI concierge. Ensure it's selling from your catalog."
+        title="Concierge & Chat"
+        subtitle="Customize your concierge's knowledge and review customer conversations."
         icon={MessageSquare}
       />
+
+      <AiKnowledgePanel />
 
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard label="Total conversations" value={chats.length} icon={<MessageSquare className="size-5 text-gold" />} />

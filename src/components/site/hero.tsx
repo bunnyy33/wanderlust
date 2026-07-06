@@ -45,7 +45,7 @@ export function Hero({
         <div className="max-w-3xl">
           <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-xs font-medium text-white backdrop-blur">
             <Sparkles size={14} className="text-gold" />
-            AI-powered travel planning, now live
+            Smart travel planning, now live
           </div>
           <h1 className="font-[family-name:var(--font-display)] text-4xl font-bold leading-[1.05] text-white sm:text-6xl lg:text-7xl">
             The world's most
@@ -56,7 +56,7 @@ export function Hero({
           </h1>
           <p className="mt-6 max-w-xl text-lg text-white/85">
             Handpicked tours, luxury hotels and private transfers across 120+ destinations.
-            Plan smarter with our AI concierge and book with total confidence.
+            Plan smarter with our concierge team and book with total confidence.
           </p>
 
           <div className="mt-8 flex flex-wrap gap-3">
