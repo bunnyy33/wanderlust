@@ -27,14 +27,15 @@ export function Hero({
   };
 
   return (
-    <section className="relative -mt-16 flex min-h-[100svh] items-center overflow-hidden pt-16">
+    <section className="relative -mt-16 flex min-h-[100svh] items-center overflow-hidden bg-primary pt-16">
       {/* Background */}
       <div className="absolute inset-0">
         <Image
-          src="https://images.unsplash.com/photo-1506929562872-bb421503ef21?auto=format&fit=crop&w=1600&q=75"
+          src="https://images.unsplash.com/photo-1506929562872-bb421503ef21?auto=format&fit=crop&w=1200&q=70"
           alt="Luxury travel destination with beach and ocean views"
           fill
           priority
+          fetchPriority="high"
           className="object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-black/70" />
@@ -150,6 +151,7 @@ export function Hero({
             <Button
               onClick={submit}
               size="lg"
+              aria-label="Search experiences"
               className="h-full min-h-[52px] bg-primary text-primary-foreground hover:bg-primary/90"
             >
               <Search size={18} className="sm:mr-1" />
@@ -171,14 +173,17 @@ function Field({
   label: string;
   children: React.ReactNode;
 }) {
+  const fieldId = label.toLowerCase().replace(/\s+/g, "-");
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border bg-background/60 px-3 py-2.5 transition-colors hover:border-primary/40">
-      <span className="text-muted-foreground">{icon}</span>
+      <span className="text-muted-foreground" aria-hidden="true">{icon}</span>
       <div className="min-w-0 flex-1">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <label htmlFor={fieldId} className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {label}
+        </label>
+        <div id={fieldId} role="group" aria-label={label}>
+          {children}
         </div>
-        {children}
       </div>
     </div>
   );
