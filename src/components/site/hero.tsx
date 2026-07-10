@@ -32,7 +32,7 @@ export function Hero({
       <div className="absolute inset-0">
         <Image
           src="https://images.unsplash.com/photo-1506929562872-bb421503ef21?auto=format&fit=crop&w=1600&q=75"
-          alt="Luxury travel"
+          alt="Luxury travel destination with beach and ocean views"
           fill
           priority
           className="object-cover"

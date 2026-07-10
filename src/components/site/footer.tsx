@@ -56,11 +56,11 @@ export function Footer() {
               Explore
             </h4>
             <ul className="mt-4 space-y-2.5 text-sm text-white/80">
-              <li><button onClick={() => goSection("destinations")} className="transition-colors hover:text-gold">Destinations</button></li>
-              <li><button onClick={() => goSection("experiences")} className="transition-colors hover:text-gold">Tours & Activities</button></li>
-              <li><button onClick={() => goSection("hotels")} className="transition-colors hover:text-gold">Luxury Hotels</button></li>
-              <li><button onClick={() => goSection("experiences")} className="transition-colors hover:text-gold">Airport Transfers</button></li>
-              <li><button onClick={() => goSection("planner")} className="transition-colors hover:text-gold">Trip Planner</button></li>
+              <li><a href="/#destinations" className="transition-colors hover:text-gold">Destinations</a></li>
+              <li><a href="/#experiences" className="transition-colors hover:text-gold">Tours & Activities</a></li>
+              <li><a href="/#hotels" className="transition-colors hover:text-gold">Luxury Hotels</a></li>
+              <li><a href="/#experiences" className="transition-colors hover:text-gold">Airport Transfers</a></li>
+              <li><a href="/#planner" className="transition-colors hover:text-gold">Trip Planner</a></li>
             </ul>
           </div>
 
