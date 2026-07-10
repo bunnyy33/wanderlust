@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { useStore } from "@/lib/store";
 import { Header } from "./header";
 import { Footer } from "./footer";
@@ -12,14 +12,17 @@ import { PlannerSection } from "./planner-section";
 import { RecommendationsSection } from "./recommendations-section";
 import { WhyUs } from "./why-us";
 import { Testimonials } from "./testimonials";
-import { DetailDialog } from "./detail-dialog";
 import { AIChat } from "./ai-chat";
-import { WishlistDrawer } from "./wishlist-drawer";
-import { AccountDialog } from "./account-dialog";
-import { AuthDialog } from "./auth-dialog";
-import { InquiryDialog } from "./inquiry-dialog";
-import { CartDrawer } from "./cart-drawer";
 import { WhatsAppFab } from "./whatsapp-fab";
+
+// Lazy load heavy dialogs — only download JS when opened
+const DetailDialog = lazy(() => import("./detail-dialog").then(m => ({ default: m.DetailDialog })));
+const WishlistDrawer = lazy(() => import("./wishlist-drawer").then(m => ({ default: m.WishlistDrawer })));
+const AccountDialog = lazy(() => import("./account-dialog").then(m => ({ default: m.AccountDialog })));
+const AuthDialog = lazy(() => import("./auth-dialog").then(m => ({ default: m.AuthDialog })));
+const InquiryDialog = lazy(() => import("./inquiry-dialog").then(m => ({ default: m.InquiryDialog })));
+const CartDrawer = lazy(() => import("./cart-drawer").then(m => ({ default: m.CartDrawer })));
+
 import type { DestinationT } from "@/lib/types";
 
 export function SiteApp({ destinations }: { destinations: DestinationT[] }) {
@@ -79,15 +82,19 @@ export function SiteApp({ destinations }: { destinations: DestinationT[] }) {
       </main>
       <Footer />
 
-      {/* Overlays */}
-      <DetailDialog />
+      {/* Overlays — lazy loaded to reduce initial JS bundle */}
+      <Suspense fallback={null}>
+        <DetailDialog />
+      </Suspense>
       <AIChat />
       <WhatsAppFab />
-      <WishlistDrawer />
-      <CartDrawer />
-      <AccountDialog />
-      <AuthDialog />
-      <InquiryDialog open={inquiryOpen} onOpenChange={setInquiryOpen} />
+      <Suspense fallback={null}>
+        <WishlistDrawer />
+        <CartDrawer />
+        <AccountDialog />
+        <AuthDialog />
+        <InquiryDialog open={inquiryOpen} onOpenChange={setInquiryOpen} />
+      </Suspense>
     </div>
   );
 }
