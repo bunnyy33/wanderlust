@@ -76,18 +76,6 @@ export function ExperienceCard({
             </span>
           )}
         </div>
-        <button
-          onClick={toggle}
-          aria-label="Toggle wishlist"
-          className={cn(
-            "absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full backdrop-blur transition-all",
-            inWish
-              ? "bg-rose-500 text-white"
-              : "bg-white/90 text-foreground hover:bg-white"
-          )}
-        >
-          <Heart size={16} className={cn(inWish && "fill-current")} />
-        </button>
         <RatingPill
           rating={experience.rating}
           reviewCount={experience.reviewCount}
@@ -128,15 +116,39 @@ export function ExperienceCard({
 
   if (href) {
     return (
-      <Link href={href} onClick={() => pushRecent(experience)} className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
-        {CardInner}
-      </Link>
+      <div className="group relative">
+        <Link href={href} onClick={() => pushRecent(experience)} className="flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+          {CardInner}
+        </Link>
+        <button
+          onClick={toggle}
+          aria-label="Toggle wishlist"
+          className={cn(
+            "absolute right-3 top-3 z-10 grid h-9 w-9 place-items-center rounded-full backdrop-blur transition-all",
+            inWish ? "bg-rose-500 text-white" : "bg-white/90 text-foreground hover:bg-white"
+          )}
+        >
+          <Heart size={16} className={cn(inWish && "fill-current")} />
+        </button>
+      </div>
     );
   }
   return (
-    <article onClick={() => onOpen?.(experience.id)} className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
-      {CardInner}
-    </article>
+    <div className="group relative">
+      <article onClick={() => onOpen?.(experience.id)} className="flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+        {CardInner}
+      </article>
+      <button
+        onClick={toggle}
+        aria-label="Toggle wishlist"
+        className={cn(
+          "absolute right-3 top-3 z-10 grid h-9 w-9 place-items-center rounded-full backdrop-blur transition-all",
+          inWish ? "bg-rose-500 text-white" : "bg-white/90 text-foreground hover:bg-white"
+        )}
+      >
+        <Heart size={16} className={cn(inWish && "fill-current")} />
+      </button>
+    </div>
   );
 }
 
@@ -178,18 +190,6 @@ export function HotelCard({
             <span key={i} className="text-gold">★</span>
           ))}
         </div>
-        <button
-          onClick={toggle}
-          aria-label="Toggle wishlist"
-          className={cn(
-            "absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full backdrop-blur transition-all",
-            inWish
-              ? "bg-rose-500 text-white"
-              : "bg-white/90 text-foreground hover:bg-white"
-          )}
-        >
-          <Heart size={16} className={cn(inWish && "fill-current")} />
-        </button>
         {hotel.featured && (
           <span className="absolute bottom-3 left-3 rounded-full bg-gold px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-[var(--gold-foreground)] shadow">
             Featured
@@ -244,15 +244,39 @@ export function HotelCard({
 
   if (href) {
     return (
-      <Link href={href} className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
-        {CardInner}
-      </Link>
+      <div className="group relative">
+        <Link href={href} className="flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+          {CardInner}
+        </Link>
+        <button
+          onClick={toggle}
+          aria-label="Toggle wishlist"
+          className={cn(
+            "absolute right-3 top-3 z-10 grid h-9 w-9 place-items-center rounded-full backdrop-blur transition-all",
+            inWish ? "bg-rose-500 text-white" : "bg-white/90 text-foreground hover:bg-white"
+          )}
+        >
+          <Heart size={16} className={cn(inWish && "fill-current")} />
+        </button>
+      </div>
     );
   }
   return (
-    <article onClick={() => onOpen?.(hotel.id)} className="group relative flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
-      {CardInner}
-    </article>
+    <div className="group relative">
+      <article onClick={() => onOpen?.(hotel.id)} className="flex cursor-pointer flex-col overflow-hidden rounded-2xl border border-border bg-card transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+        {CardInner}
+      </article>
+      <button
+        onClick={toggle}
+        aria-label="Toggle wishlist"
+        className={cn(
+          "absolute right-3 top-3 z-10 grid h-9 w-9 place-items-center rounded-full backdrop-blur transition-all",
+          inWish ? "bg-rose-500 text-white" : "bg-white/90 text-foreground hover:bg-white"
+        )}
+      >
+        <Heart size={16} className={cn(inWish && "fill-current")} />
+      </button>
+    </div>
   );
 }
 
