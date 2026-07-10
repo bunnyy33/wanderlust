@@ -261,8 +261,8 @@ export function ExperiencesSection({
           </div>
         ) : (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {experiences.map((e) => (
-              <ExperienceCard key={e.id} experience={e} onOpen={(id) => openDetail({ kind: "EXPERIENCE", id })} />
+            {experiences.map((e, i) => (
+              <ExperienceCard key={e.id} experience={e} priority={i < 4} onOpen={(id) => openDetail({ kind: "EXPERIENCE", id })} />
             ))}
           </div>
         )}

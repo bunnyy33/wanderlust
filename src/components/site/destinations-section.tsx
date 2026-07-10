@@ -48,6 +48,7 @@ export function DestinationsSection({
               fill
               sizes="(max-width:768px) 100vw, 50vw"
               className="object-cover transition-transform duration-700 group-hover:scale-110"
+              loading="lazy"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
             <div className="absolute inset-0 flex flex-col justify-end p-5">
@@ -81,6 +82,7 @@ export function DestinationsSection({
                 fill
                 sizes="(max-width:640px) 100vw, 25vw"
                 className="object-cover transition-transform duration-700 group-hover:scale-110"
+                loading="lazy"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
               <div className="absolute bottom-0 left-0 p-4">

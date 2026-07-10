@@ -38,9 +38,11 @@ export function getRecent(): ExperienceT[] {
 export function ExperienceCard({
   experience,
   onOpen,
+  priority = false,
 }: {
   experience: ExperienceT;
   onOpen?: (id: string) => void;
+  priority?: boolean;
 }) {
   const { toggleWish } = useStore();
   const inWish = useStore((s) => s.wishlist.includes(`EXPERIENCE:${experience.id}`));
@@ -62,6 +64,8 @@ export function ExperienceCard({
           fill
           sizes="(max-width:768px) 100vw, (max-width:1200px) 50vw, 33vw"
           className="object-cover transition-transform duration-700 group-hover:scale-110"
+          priority={priority}
+          loading={priority ? "eager" : "lazy"}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
         <div className="absolute left-3 top-3 flex gap-2">
@@ -139,9 +143,11 @@ export function ExperienceCard({
 export function HotelCard({
   hotel,
   onOpen,
+  priority = false,
 }: {
   hotel: HotelT;
   onOpen?: (id: string) => void;
+  priority?: boolean;
 }) {
   const { toggleWish } = useStore();
   const inWish = useStore((s) => s.wishlist.includes(`HOTEL:${hotel.id}`));
@@ -158,11 +164,13 @@ export function HotelCard({
     <>
       <div className="relative aspect-[4/3] overflow-hidden">
         <Image
-          src={hotel.images[0]}
+          src={hotel.images[0] || "https://images.unsplash.com/photo-1568607979400-366bd4ba1b73?auto=format&fit=crop&w=1200&q=80"}
           alt={hotel.name}
           fill
           sizes="(max-width:768px) 100vw, (max-width:1200px) 50vw, 33vw"
           className="object-cover transition-transform duration-700 group-hover:scale-110"
+          priority={priority}
+          loading={priority ? "eager" : "lazy"}
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
         <div className="absolute left-3 top-3 flex gap-1.5">

@@ -42,8 +42,8 @@ export function HotelsSection() {
         </div>
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {hotels.map((h) => (
-            <HotelCard key={h.id} hotel={h} onOpen={(id) => openDetail({ kind: "HOTEL", id })} />
+          {hotels.map((h, i) => (
+            <HotelCard key={h.id} hotel={h} priority={i < 4} onOpen={(id) => openDetail({ kind: "HOTEL", id })} />
           ))}
         </div>
       )}

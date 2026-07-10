@@ -31,7 +31,7 @@ export function Hero({
       {/* Background */}
       <div className="absolute inset-0">
         <Image
-          src="https://images.unsplash.com/photo-1506929562872-bb421503ef21?auto=format&fit=crop&w=2000&q=80"
+          src="https://images.unsplash.com/photo-1506929562872-bb421503ef21?auto=format&fit=crop&w=1600&q=75"
           alt="Luxury travel"
           fill
           priority
