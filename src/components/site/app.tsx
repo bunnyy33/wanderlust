@@ -8,12 +8,14 @@ import { Hero } from "./hero";
 import { DestinationsSection } from "./destinations-section";
 import { ExperiencesSection } from "./experiences-section";
 import { HotelsSection } from "./hotels-section";
-import { PlannerSection } from "./planner-section";
-import { RecommendationsSection } from "./recommendations-section";
 import { WhyUs } from "./why-us";
 import { Testimonials } from "./testimonials";
-import { AIChat } from "./ai-chat";
-import { WhatsAppFab } from "./whatsapp-fab";
+
+// Lazy load below-the-fold sections + heavy widgets
+const PlannerSection = lazy(() => import("./planner-section").then(m => ({ default: m.PlannerSection })));
+const RecommendationsSection = lazy(() => import("./recommendations-section").then(m => ({ default: m.RecommendationsSection })));
+const AIChat = lazy(() => import("./ai-chat").then(m => ({ default: m.AIChat })));
+const WhatsAppFab = lazy(() => import("./whatsapp-fab").then(m => ({ default: m.WhatsAppFab })));
 
 // Lazy load heavy dialogs — only download JS when opened
 const DetailDialog = lazy(() => import("./detail-dialog").then(m => ({ default: m.DetailDialog })));
@@ -75,8 +77,8 @@ export function SiteApp({ destinations }: { destinations: DestinationT[] }) {
         />
         <ExperiencesSection destinations={destinations} initialFilter={filter} />
         <HotelsSection />
-        <PlannerSection destinations={destinations} />
-        <RecommendationsSection />
+        <Suspense fallback={null}><PlannerSection destinations={destinations} /></Suspense>
+        <Suspense fallback={null}><RecommendationsSection /></Suspense>
         <WhyUs />
         <Testimonials />
       </main>
@@ -86,8 +88,8 @@ export function SiteApp({ destinations }: { destinations: DestinationT[] }) {
       <Suspense fallback={null}>
         <DetailDialog />
       </Suspense>
-      <AIChat />
-      <WhatsAppFab />
+      <Suspense fallback={null}><AIChat /></Suspense>
+      <Suspense fallback={null}><WhatsAppFab /></Suspense>
       <Suspense fallback={null}>
         <WishlistDrawer />
         <CartDrawer />
