@@ -100,6 +100,7 @@ export function Hero({
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_0.8fr_auto]">
             <Field icon={<MapPin size={16} />} label="Destination">
               <select
+                aria-label="Destination"
                 value={destination}
                 onChange={(e) => setDestination(e.target.value)}
                 className="w-full bg-transparent text-sm font-medium text-foreground outline-none"
@@ -114,6 +115,7 @@ export function Hero({
             </Field>
             <Field icon={<Search size={16} />} label="Experience">
               <select
+                aria-label="Experience type"
                 value={type}
                 onChange={(e) => setType(e.target.value)}
                 className="w-full bg-transparent text-sm font-medium text-foreground outline-none"
@@ -129,6 +131,7 @@ export function Hero({
             </Field>
             <Field icon={<CalendarDays size={16} />} label="Date">
               <input
+                aria-label="Date"
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
@@ -137,6 +140,7 @@ export function Hero({
             </Field>
             <Field icon={<Users size={16} />} label="Guests">
               <select
+                aria-label="Number of guests"
                 value={guests}
                 onChange={(e) => setGuests(Number(e.target.value))}
                 className="w-full bg-transparent text-sm font-medium text-foreground outline-none"
@@ -173,17 +177,14 @@ function Field({
   label: string;
   children: React.ReactNode;
 }) {
-  const fieldId = label.toLowerCase().replace(/\s+/g, "-");
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border bg-background/60 px-3 py-2.5 transition-colors hover:border-primary/40">
       <span className="text-muted-foreground" aria-hidden="true">{icon}</span>
       <div className="min-w-0 flex-1">
-        <label htmlFor={fieldId} className="block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-foreground/60" aria-hidden="true">
           {label}
-        </label>
-        <div id={fieldId} role="group" aria-label={label}>
-          {children}
         </div>
+        {children}
       </div>
     </div>
   );

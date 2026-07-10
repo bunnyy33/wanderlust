@@ -319,7 +319,7 @@ function BookingSidebar({
         </div>
 
         <div className="flex gap-2">
-          <Button variant="outline" size="icon" onClick={onWish} className={cn("shrink-0", inWish && "border-rose-400 text-rose-500")}><Heart size={16} className={cn(inWish && "fill-current")} /></Button>
+          <Button variant="outline" size="icon" aria-label="Toggle wishlist" onClick={onWish} className={cn("shrink-0", inWish && "border-rose-400 text-rose-500")}><Heart size={16} className={cn(inWish && "fill-current")} /></Button>
           <Button
             variant="outline"
             className="h-12 shrink-0 gap-1.5"
