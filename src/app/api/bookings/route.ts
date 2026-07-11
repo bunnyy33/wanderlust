@@ -82,6 +82,9 @@ export async function POST(req: NextRequest) {
 
   const reference = generateReference();
 
+  // Get session user (for fraud scoring + booking ownership)
+  const sessionUser = await getSessionUser();
+
   // Fraud scoring
   const ipAddress = getClientIp(req);
   const userAgent = getClientUserAgent(req);
