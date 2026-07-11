@@ -1,10 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { getClientIp, getClientUserAgent } from "@/lib/fraud";
+import { rateLimit } from "@/lib/rate-limit";
 
 // AI Travel Chat Assistant — sales-focused concierge
 // POST /api/ai/chat { messages: [{role, content}], sessionId }
 export async function POST(req: NextRequest) {
+  // Rate limit: 15 messages per minute per IP
+  const ip = getClientIp(req) || "unknown";
+  const limit = rateLimit(`chat:${ip}`, 15, 60 * 1000);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please wait a moment." },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(limit.resetIn / 1000)) } }
+    );
+  }
+
   const body = await req.json();
   const { messages, sessionId } = body as {
     messages: { role: string; content: string }[];

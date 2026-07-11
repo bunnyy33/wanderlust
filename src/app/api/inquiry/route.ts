@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sendEmail } from "@/lib/mailer";
+import { rateLimit } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/fraud";
 
 // POST /api/inquiry — customer sends an inquiry, logged + emailed to concierge
 export async function POST(req: NextRequest) {
+  // Rate limit: 5 inquiries per hour per IP
+  const ip = getClientIp(req) || "unknown";
+  const limit = rateLimit(`inquiry:${ip}`, 5, 60 * 60 * 1000);
+  if (!limit.allowed) {
+    return NextResponse.json({ error: "Too many inquiries. Please try again later." }, { status: 429 });
+  }
+
   const body = await req.json();
   const name = String(body.name || "").trim();
   const email = String(body.email || "").trim().toLowerCase();

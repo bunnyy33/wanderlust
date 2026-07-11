@@ -8,11 +8,23 @@ import { sendEmail, bookingConfirmationEmail } from "@/lib/mailer";
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const email = searchParams.get("email")?.trim().toLowerCase();
-  if (!email) {
+  const sessionUser = await getSessionUser();
+
+  // Security: if logged in, prioritize their session (prevents IDOR)
+  const lookupEmail = sessionUser?.email || email;
+  if (!lookupEmail) {
     return NextResponse.json({ bookings: [] });
   }
+
+   
+  const where: any = {
+    OR: [
+      { customerEmail: lookupEmail },
+      ...(sessionUser ? [{ userId: sessionUser.id }] : []),
+    ],
+  };
   const bookings = await db.booking.findMany({
-    where: { customerEmail: email },
+    where,
     orderBy: { createdAt: "desc" },
     include: { experience: { include: { destination: true } }, hotel: { include: { destination: true } } },
   });

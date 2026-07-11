@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { serializeReview } from "@/lib/transform";
+import { getSessionUser } from "@/lib/customer-auth";
+import { rateLimit } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/fraud";
 
 // GET /api/reviews?experienceId= | hotelId=
 export async function GET(req: NextRequest) {
@@ -25,8 +28,21 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ reviews: reviews.map(serializeReview) });
 }
 
-// POST /api/reviews
+// POST /api/reviews — requires login + rate limited
 export async function POST(req: NextRequest) {
+  // Rate limit: 3 reviews per minute per IP
+  const ip = getClientIp(req) || "unknown";
+  const limit = rateLimit(`review:${ip}`, 3, 60 * 1000);
+  if (!limit.allowed) {
+    return NextResponse.json({ error: "Too many reviews submitted. Please wait." }, { status: 429 });
+  }
+
+  // Require login to submit reviews
+  const user = await getSessionUser();
+  if (!user) {
+    return NextResponse.json({ error: "Please sign in to submit a review" }, { status: 401 });
+  }
+
   const body = await req.json();
   const { experienceId, hotelId, authorName, rating, title, comment, travelDate } = body;
 
@@ -35,6 +51,15 @@ export async function POST(req: NextRequest) {
   }
   if (!experienceId && !hotelId) {
     return NextResponse.json({ error: "Target required" }, { status: 400 });
+  }
+  // Validate rating range
+  const ratingNum = parseFloat(rating);
+  if (isNaN(ratingNum) || ratingNum < 1 || ratingNum > 5) {
+    return NextResponse.json({ error: "Rating must be between 1 and 5" }, { status: 400 });
+  }
+  // Validate comment length
+  if (String(comment).trim().length < 10) {
+    return NextResponse.json({ error: "Review must be at least 10 characters" }, { status: 400 });
   }
 
   const review = await db.review.create({

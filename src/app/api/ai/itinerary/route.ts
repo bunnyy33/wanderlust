@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { getClientIp } from "@/lib/fraud";
+import { rateLimit } from "@/lib/rate-limit";
 
 // AI Trip Planner
 // POST /api/ai/itinerary { prompt, budget?, days?, travelers?, destination? }
 // Returns a structured itinerary using real catalog data as context.
 export async function POST(req: NextRequest) {
+  // Rate limit: 5 itineraries per minute per IP (AI is expensive)
+  const ip = getClientIp(req) || "unknown";
+  const limit = rateLimit(`itinerary:${ip}`, 5, 60 * 1000);
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please wait a moment before planning another trip." },
+      { status: 429, headers: { "Retry-After": String(Math.ceil(limit.resetIn / 1000)) } }
+    );
+  }
+
   const body = await req.json();
   const { prompt, budget, days, travelers, destination } = body as {
     prompt?: string;
