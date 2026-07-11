@@ -143,6 +143,12 @@ export function serializeBooking(b: any): BookingT {
     createdAt: b.createdAt instanceof Date ? b.createdAt.toISOString() : b.createdAt,
     experience: b.experience ? serializeExperience(b.experience) : null,
     hotel: b.hotel ? serializeHotel(b.hotel) : null,
+    ipAddress: b.ipAddress ?? null,
+    userAgent: b.userAgent ?? null,
+    fraudScore: b.fraudScore ?? 0,
+    fraudSignals: b.fraudSignals ? (typeof b.fraudSignals === "string" ? JSON.parse(b.fraudSignals) : b.fraudSignals) : [],
+    isFlagged: b.isFlagged ?? false,
+    manualReview: b.manualReview ?? "PENDING",
   };
 }
 

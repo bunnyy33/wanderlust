@@ -138,6 +138,13 @@ export interface BookingT {
   createdAt: string;
   experience?: ExperienceT | null;
   hotel?: HotelT | null;
+  // Fraud detection
+  ipAddress: string | null;
+  userAgent: string | null;
+  fraudScore: number;
+  fraudSignals: string[];
+  isFlagged: boolean;
+  manualReview: "PENDING" | "REAL" | "SPAM";
 }
 
 export interface CouponT {

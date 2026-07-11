@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { serializeBooking } from "@/lib/transform";
 import { generateReference } from "@/lib/format";
 import { sendEmail, bookingConfirmationEmail } from "@/lib/mailer";
+import { getSessionUser } from "@/lib/customer-auth";
+import { computeFraudScore, getClientIp, getClientUserAgent } from "@/lib/fraud";
 
 // GET /api/bookings?email=  — list bookings by customer email
 export async function GET(req: NextRequest) {
@@ -79,6 +81,16 @@ export async function POST(req: NextRequest) {
 
   const reference = generateReference();
 
+  // Fraud scoring
+  const ipAddress = getClientIp(req);
+  const userAgent = getClientUserAgent(req);
+  const fraud = await computeFraudScore({
+    customerName, customerEmail, customerPhone,
+    ipAddress, userAgent,
+    userId: sessionUser?.id || null,
+    totalAmount: parseFloat(totalAmount),
+  });
+
   const booking = await db.booking.create({
     data: {
       reference,
@@ -102,6 +114,11 @@ export async function POST(req: NextRequest) {
       customerPhone,
       specialRequests,
       couponCode,
+      ipAddress,
+      userAgent,
+      fraudScore: fraud.score,
+      fraudSignals: JSON.stringify(fraud.signals),
+      isFlagged: fraud.isFlagged,
     },
     include: { experience: { include: { destination: true } }, hotel: { include: { destination: true } } },
   });

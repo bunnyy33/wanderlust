@@ -121,6 +121,13 @@ model Booking {
   customerPhone String?
   specialRequests String?
   couponCode    String?
+  // Fraud detection
+  ipAddress     String?
+  userAgent     String?
+  fraudScore    Int      @default(0)
+  fraudSignals  String   @default("[]")
+  isFlagged     Boolean  @default(false)
+  manualReview  String   @default("PENDING")
   createdAt     DateTime @default(now())
 }
 

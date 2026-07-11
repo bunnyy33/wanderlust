@@ -392,7 +392,7 @@ function Checkout({
         </WidgetSection>
         <WidgetSection label="Payment method">
           <div className="grid grid-cols-3 gap-2">
-            {[{id:"CARD",l:"Card"},{id:"APPLE",l:"Apple Pay"},{id:"PAYPAL",l:"PayPal"}].map((m) => (<button key={m.id} onClick={() => {}} className="rounded-lg border border-primary bg-primary/5 p-2.5 text-sm font-medium">{m.l}</button>))}
+            {[{id:"CARD",l:"Card"},{id:"APPLE",l:"Apple Pay"},{id:"PAYPAL",l:"PayPal"}].map((m) => (<button key={m.id} onClick={() => setPay(m.id)} className={cn("rounded-lg border p-2.5 text-sm font-medium transition-colors", pay === m.id ? "border-primary bg-primary/5" : "border-border hover:border-primary/40")}>{m.l}</button>))}
           </div>
         </WidgetSection>
         <div className="rounded-xl border border-border bg-card p-4">

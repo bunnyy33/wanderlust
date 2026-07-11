@@ -7,6 +7,7 @@ import { Footer } from "./footer";
 import { Hero } from "./hero";
 import { DestinationsSection } from "./destinations-section";
 import { ExperiencesSection } from "./experiences-section";
+import { RecentlyViewed } from "./recently-viewed";
 import { HotelsSection } from "./hotels-section";
 import { WhyUs } from "./why-us";
 import { Testimonials } from "./testimonials";
@@ -76,6 +77,7 @@ export function SiteApp({ destinations }: { destinations: DestinationT[] }) {
           }}
         />
         <ExperiencesSection destinations={destinations} initialFilter={filter} />
+        <RecentlyViewed />
         <HotelsSection />
         <Suspense fallback={null}><PlannerSection destinations={destinations} /></Suspense>
         <Suspense fallback={null}><RecommendationsSection /></Suspense>

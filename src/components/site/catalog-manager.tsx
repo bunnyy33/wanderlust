@@ -34,6 +34,7 @@ import type {
   RoomTypeT,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { ImageUploader } from "@/components/site/image-uploader";
 
 import {
   AlertDialog,
@@ -888,15 +889,11 @@ function ExperiencesManager() {
 
             <Field
               label="Images"
-              hint="One URL per line"
+              hint="Upload from computer or paste URLs"
             >
-              <Textarea
+              <ImageUploader
                 value={form.images}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, images: e.target.value }))
-                }
-                rows={3}
-                placeholder="https://…"
+                onChange={(v) => setForm((f) => ({ ...f, images: v }))}
               />
             </Field>
 
