@@ -368,6 +368,7 @@ function Checkout({
   const [requests, setRequests] = useState("");
   const [loading, setLoading] = useState(false);
   const [cardOpen, setCardOpen] = useState(false);
+  const [pay, setPay] = useState("CARD");
   const valid = name.trim() && /\S+@\S+\.\S+/.test(email);
 
   const submit = () => setCardOpen(true);
