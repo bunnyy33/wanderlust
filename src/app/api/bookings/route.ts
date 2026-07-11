@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/bookings — create a booking (transactional-ish availability check)
 export async function POST(req: NextRequest) {
+  try {
   const body = await req.json();
   const {
     type, // EXPERIENCE | HOTEL
@@ -180,4 +181,11 @@ export async function POST(req: NextRequest) {
     booking: serializeBooking({ ...booking, specialRequests: booking.specialRequests || (roomTypeName ? `Room: ${roomTypeName}` : null) }),
     reference,
   });
+  } catch (err) {
+    console.error("Booking creation error:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Failed to create booking" },
+      { status: 500 }
+    );
+  }
 }
