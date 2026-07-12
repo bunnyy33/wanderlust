@@ -1,10 +1,10 @@
-// Groq AI client — free, fast, works on Vercel
-// Uses Llama 3.3 70B (very capable, OpenAI-compatible API)
-// Get a free API key at: https://console.groq.com/keys
+// Z.ai API client — uses the PUBLIC Z.ai API (works on Vercel)
+// Model: glm-4-plus (same quality as sandbox)
+// Get your API key at: https://open.z.ai
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
-const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_MODEL = "llama-3.3-70b-versatile";
+const ZAI_API_KEY = process.env.ZAI_API_KEY || process.env.zai_api_key || "";
+const ZAI_URL = "https://api.z.ai/api/paas/v4/chat/completions";
+const ZAI_MODEL = "glm-4-plus";
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -12,14 +12,14 @@ interface ChatMessage {
 }
 
 export async function aiChat(messages: ChatMessage[]): Promise<string> {
-  const response = await fetch(GROQ_URL, {
+  const response = await fetch(ZAI_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${GROQ_API_KEY}`,
+      Authorization: `Bearer ${ZAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: GROQ_MODEL,
+      model: ZAI_MODEL,
       messages,
       temperature: 0.7,
       max_tokens: 1024,
@@ -28,7 +28,7 @@ export async function aiChat(messages: ChatMessage[]): Promise<string> {
 
   if (!response.ok) {
     const errorBody = await response.text();
-    throw new Error(`Groq API ${response.status}: ${errorBody}`);
+    throw new Error(`ZAI API ${response.status}: ${errorBody}`);
   }
 
   const data = await response.json();
