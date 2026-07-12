@@ -106,7 +106,7 @@ Respond with VALID JSON ONLY (no markdown, no prose before/after) matching this 
   try {
     const { aiChat } = await import("@/lib/ai-client");
     const raw = await aiChat([
-      { role: "assistant", content: systemPrompt },
+      { role: "system", content: systemPrompt },
       { role: "user", content: userBrief },
     ]);
     // Extract JSON from response (handle markdown wrapping)

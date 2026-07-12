@@ -54,7 +54,7 @@ Pick exactly 6 ids that exist in the catalog. Respect budget. Prefer matching de
   try {
     const { aiChat } = await import("@/lib/ai-client");
     const raw = await aiChat([
-      { role: "assistant", content: systemPrompt },
+      { role: "system", content: systemPrompt },
       { role: "user", content: brief },
     ]);
     const jsonMatch = raw.match(/\{[\s\S]*\}/);

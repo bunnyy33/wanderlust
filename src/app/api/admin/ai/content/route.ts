@@ -37,7 +37,7 @@ Return STRICT JSON ONLY — no markdown, no prose, no code fences. Schema:
 
     const { aiChat } = await import("@/lib/ai-client");
     const raw = await aiChat([
-      { role: "assistant", content: systemPrompt },
+      { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ]);
 

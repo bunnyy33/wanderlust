@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   try {
     const { aiChat } = await import("@/lib/ai-client");
     const raw = await aiChat([
-      { role: "assistant", content: systemPrompt },
+      { role: "system", content: systemPrompt },
       { role: "user", content: `Reviews:\n${reviewText}` },
     ]);
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
