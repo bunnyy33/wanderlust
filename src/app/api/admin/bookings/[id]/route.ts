@@ -12,8 +12,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const body = await req.json();
     const action = String(body?.action ?? "").toLowerCase();
 
-    if (action !== "cancel" && action !== "refund" && action !== "review") {
-      return NextResponse.json({ error: 'action must be "cancel", "refund" or "review"' }, { status: 400 });
+    const VALID_ACTIONS = [
+      "cancel",
+      "refund",
+      "review",
+      "confirm-supplier",
+      "confirm-customer",
+      "confirm",
+    ];
+    if (!VALID_ACTIONS.includes(action)) {
+      return NextResponse.json(
+        { error: 'action must be "cancel", "refund", "review", "confirm-supplier", "confirm-customer" or "confirm"' },
+        { status: 400 },
+      );
     }
 
     if (action === "review") {
@@ -28,10 +39,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ booking: serializeBooking(updated) });
     }
 
+    // 4-stage booking progression: PENDING → SUPPLIER_CONFIRMED → CUSTOMER_CONFIRMED → CONFIRMED
+    const STATUS_BY_ACTION: Record<string, string> = {
+      "confirm-supplier": "SUPPLIER_CONFIRMED",
+      "confirm-customer": "CUSTOMER_CONFIRMED",
+      "confirm": "CONFIRMED",
+    };
+    if (STATUS_BY_ACTION[action]) {
+      const updated = await db.booking.update({
+        where: { id },
+        data: { status: STATUS_BY_ACTION[action] },
+        include: { experience: { include: { destination: true } }, hotel: { include: { destination: true } } },
+      });
+      return NextResponse.json({ booking: serializeBooking(updated) });
+    }
+
     const booking = await db.booking.findUnique({ where: { id } });
     if (!booking) return NextResponse.json({ error: "Booking not found" }, { status: 404 });
 
-    const wasActive = ["CONFIRMED", "COMPLETED", "PENDING"].includes(booking.status);
+    const wasActive = ["CONFIRMED", "COMPLETED", "PENDING", "SUPPLIER_CONFIRMED", "CUSTOMER_CONFIRMED"].includes(booking.status);
 
     if (action === "cancel") {
       if (booking.experienceId && wasActive && booking.status !== "CANCELLED") {

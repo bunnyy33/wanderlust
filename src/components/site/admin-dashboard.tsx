@@ -21,6 +21,7 @@ import {
   Clock,
   Crown,
   DollarSign,
+  Eye,
   Hotel as HotelIcon,
   LayoutDashboard,
   Loader2,
@@ -32,6 +33,8 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  ShieldAlert,
+  ShieldCheck,
   Sparkle,
   Sparkles,
   Star,
@@ -54,6 +57,24 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -115,11 +136,13 @@ interface AdminStats {
   kpis: KPIs;
   revenueByType: { EXPERIENCE: number; HOTEL: number };
   statusBreakdown: {
+    PENDING: number;
+    SUPPLIER_CONFIRMED: number;
+    CUSTOMER_CONFIRMED: number;
     CONFIRMED: number;
     COMPLETED: number;
     CANCELLED: number;
     REFUNDED: number;
-    PENDING: number;
   };
   revenueTrend: RevenueTrendPoint[];
   recentBookings: RecentBooking[];
@@ -177,16 +200,20 @@ function fmtShortDate(iso: string): string {
 
 function statusBadgeClass(status: string): string {
   switch (status) {
+    case "PENDING":
+      return "bg-amber-500 text-white border-transparent";
+    case "SUPPLIER_CONFIRMED":
+      return "bg-sky-600 text-white border-transparent";
+    case "CUSTOMER_CONFIRMED":
+      return "bg-teal-600 text-white border-transparent";
     case "CONFIRMED":
-      return "bg-primary text-primary-foreground border-transparent";
-    case "COMPLETED":
       return "bg-emerald-600 text-white border-transparent";
+    case "COMPLETED":
+      return "bg-primary text-primary-foreground border-transparent";
     case "CANCELLED":
       return "bg-destructive text-white border-transparent";
     case "REFUNDED":
-      return "bg-amber-500 text-white border-transparent";
-    case "PENDING":
-      return "bg-muted text-muted-foreground border-border";
+      return "bg-orange-500 text-white border-transparent";
     default:
       return "bg-muted text-muted-foreground border-border";
   }
@@ -395,17 +422,21 @@ function StatusStackedBar({
   breakdown: AdminStats["statusBreakdown"];
 }) {
   const total =
+    breakdown.PENDING +
+    breakdown.SUPPLIER_CONFIRMED +
+    breakdown.CUSTOMER_CONFIRMED +
     breakdown.CONFIRMED +
     breakdown.COMPLETED +
     breakdown.CANCELLED +
-    breakdown.REFUNDED +
-    breakdown.PENDING;
+    breakdown.REFUNDED;
   const segments = [
-    { label: "Confirmed", value: breakdown.CONFIRMED, color: "bg-primary" },
-    { label: "Completed", value: breakdown.COMPLETED, color: "bg-emerald-600" },
+    { label: "Pending", value: breakdown.PENDING, color: "bg-amber-500" },
+    { label: "Supplier", value: breakdown.SUPPLIER_CONFIRMED, color: "bg-sky-600" },
+    { label: "Customer", value: breakdown.CUSTOMER_CONFIRMED, color: "bg-teal-600" },
+    { label: "Confirmed", value: breakdown.CONFIRMED, color: "bg-emerald-600" },
+    { label: "Completed", value: breakdown.COMPLETED, color: "bg-primary" },
     { label: "Cancelled", value: breakdown.CANCELLED, color: "bg-destructive" },
-    { label: "Refunded", value: breakdown.REFUNDED, color: "bg-amber-500" },
-    { label: "Pending", value: breakdown.PENDING, color: "bg-muted-foreground/50" },
+    { label: "Refunded", value: breakdown.REFUNDED, color: "bg-orange-500" },
   ];
   return (
     <div>
@@ -422,7 +453,7 @@ function StatusStackedBar({
             ),
         )}
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
         {segments.map((s) => (
           <div key={s.label} className="flex items-center gap-2">
             <span className={cn("size-2.5 rounded-full", s.color)} />
@@ -1023,8 +1054,240 @@ function OverviewSection() {
 /* Bookings Section                                                   */
 /* ------------------------------------------------------------------ */
 
-const STATUSES = ["ALL", "CONFIRMED", "COMPLETED", "CANCELLED", "REFUNDED", "PENDING"] as const;
+const STATUSES = [
+  "ALL",
+  "PENDING",
+  "SUPPLIER_CONFIRMED",
+  "CUSTOMER_CONFIRMED",
+  "CONFIRMED",
+  "COMPLETED",
+  "CANCELLED",
+  "REFUNDED",
+] as const;
 const TYPES = ["ALL", "EXPERIENCE", "HOTEL"] as const;
+
+/* ------------------------------------------------------------------ */
+/* Fraud detail dialog                                                */
+/* ------------------------------------------------------------------ */
+
+function fraudScoreColor(score: number): string {
+  if (score >= 50) return "bg-red-500 text-white";
+  if (score >= 25) return "bg-amber-500 text-white";
+  return "bg-emerald-500 text-white";
+}
+
+function fraudRiskLabel(score: number): { label: string; tone: string } {
+  if (score >= 50) return { label: "High risk", tone: "text-red-600 dark:text-red-400" };
+  if (score >= 25) return { label: "Medium risk", tone: "text-amber-600 dark:text-amber-400" };
+  return { label: "Low risk", tone: "text-emerald-600 dark:text-emerald-400" };
+}
+
+function reviewBadgeClass(review: string): string {
+  switch (review) {
+    case "REAL":
+      return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30";
+    case "SPAM":
+      return "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30";
+    default:
+      return "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30";
+  }
+}
+
+function FraudDetailDialog({
+  booking,
+  open,
+  onOpenChange,
+  onReview,
+  loading,
+}: {
+  booking: BookingT | null;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  onReview: (manualReview: "REAL" | "SPAM" | "PENDING") => void;
+  loading: boolean;
+}) {
+  if (!booking) return null;
+  const risk = fraudRiskLabel(booking.fraudScore);
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <div
+              className={cn(
+                "flex size-10 items-center justify-center rounded-xl",
+                booking.isFlagged
+                  ? "bg-destructive/10 text-destructive"
+                  : "bg-primary/10 text-primary",
+              )}
+            >
+              <ShieldAlert className="size-5" />
+            </div>
+            <div>
+              <DialogTitle style={{ fontFamily: "var(--font-display)" }}>
+                Booking verification
+              </DialogTitle>
+              <DialogDescription className="font-mono text-xs">
+                {booking.reference}
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {/* Title */}
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Item
+            </p>
+            <p className="text-sm font-semibold text-foreground">
+              {bookingItemTitle(booking)}
+            </p>
+          </div>
+
+          {/* Score badge */}
+          <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-muted/30 p-4">
+            <div
+              className={cn(
+                "flex size-14 shrink-0 items-center justify-center rounded-full text-lg font-bold",
+                fraudScoreColor(booking.fraudScore),
+              )}
+            >
+              {booking.fraudScore}
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Fraud score · 0-100
+              </p>
+              <p className={cn("text-sm font-bold", risk.tone)}>{risk.label}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {booking.isFlagged
+                  ? "Flagged for manual review based on automated signals."
+                  : "No critical fraud signals detected."}
+              </p>
+            </div>
+          </div>
+
+          {/* Customer info */}
+          <div className="rounded-xl border border-border/60 p-4">
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Customer
+            </p>
+            <div className="grid grid-cols-1 gap-1.5 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Name:</span>
+                <span className="font-medium text-foreground">{booking.customerName}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Email:</span>
+                <span className="font-medium text-foreground">{booking.customerEmail}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Phone:</span>
+                <span className="font-medium text-foreground">
+                  {booking.customerPhone || "—"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* IP + UA */}
+          <div className="space-y-2 rounded-xl border border-border/60 p-4">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Request metadata
+            </p>
+            <div>
+              <p className="text-xs text-muted-foreground">IP address</p>
+              <p className="font-mono text-xs text-foreground">
+                {booking.ipAddress || "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">User-agent</p>
+              <p className="break-all font-mono text-[11px] leading-snug text-foreground">
+                {booking.userAgent || "—"}
+              </p>
+            </div>
+          </div>
+
+          {/* Risk signals */}
+          <div className="rounded-xl border border-border/60 p-4">
+            <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Risk signals ({booking.fraudSignals.length})
+            </p>
+            {booking.fraudSignals.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No fraud signals detected — looks clean.
+              </p>
+            ) : (
+              <ul className="space-y-1.5">
+                {booking.fraudSignals.map((sig, i) => (
+                  <li
+                    key={`${sig}-${i}`}
+                    className="flex items-start gap-2 text-sm text-foreground"
+                  >
+                    <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
+                    <span>{sig}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Manual review */}
+          <div className="rounded-xl border border-gold/20 bg-gold/5 p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Manual review
+              </p>
+              <span
+                className={cn(
+                  "rounded-md border px-2 py-0.5 text-[11px] font-semibold",
+                  reviewBadgeClass(booking.manualReview),
+                )}
+              >
+                {booking.manualReview}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={loading || booking.manualReview === "REAL"}
+                className="border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400"
+                onClick={() => onReview("REAL")}
+              >
+                <ShieldCheck className="size-3.5" /> Real
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={loading || booking.manualReview === "SPAM"}
+                className="border-red-500/30 text-red-600 hover:bg-red-500/10 dark:text-red-400"
+                onClick={() => onReview("SPAM")}
+              >
+                <ShieldAlert className="size-3.5" /> Spam
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={loading || booking.manualReview === "PENDING"}
+                onClick={() => onReview("PENDING")}
+              >
+                <RotateCcw className="size-3.5" /> Reset
+              </Button>
+            </div>
+            {loading && (
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" /> Updating…
+              </p>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function BookingsSection() {
   const [bookings, setBookings] = useState<BookingT[]>([]);
@@ -1034,6 +1297,13 @@ function BookingsSection() {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<string>("ALL");
   const [type, setType] = useState<string>("ALL");
+
+  const [fraudBooking, setFraudBooking] = useState<BookingT | null>(null);
+  const [pendingAction, setPendingAction] = useState<{
+    booking: BookingT;
+    action: "cancel" | "refund";
+  } | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -1073,6 +1343,85 @@ function BookingsSection() {
     }, 350);
     return () => clearTimeout(t);
   }, [q]);
+
+  const patchBooking = useCallback(
+    async (id: string, body: Record<string, unknown>) => {
+      const res = await fetch(`/api/admin/bookings/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error || "Action failed");
+      }
+      const data = (await res.json()) as { booking: BookingT };
+      return data.booking;
+    },
+    [],
+  );
+
+  const handleProgress = useCallback(
+    async (b: BookingT, action: string, label: string) => {
+      try {
+        setActionLoading(true);
+        await patchBooking(b.id, { action });
+        toast.success(`${label} — booking updated.`);
+        await load();
+      } catch (e) {
+        toast.error(`Failed to update booking`, {
+          description: e instanceof Error ? e.message : "",
+        });
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [patchBooking, load],
+  );
+
+  const handleReview = useCallback(
+    async (manualReview: "REAL" | "SPAM" | "PENDING") => {
+      if (!fraudBooking) return;
+      try {
+        setActionLoading(true);
+        const updated = await patchBooking(fraudBooking.id, {
+          action: "review",
+          manualReview,
+        });
+        setFraudBooking(updated);
+        toast.success(`Marked as ${manualReview}.`);
+        await load();
+      } catch (e) {
+        toast.error("Failed to update review", {
+          description: e instanceof Error ? e.message : "",
+        });
+      } finally {
+        setActionLoading(false);
+      }
+    },
+    [fraudBooking, patchBooking, load],
+  );
+
+  const handleConfirmAction = useCallback(async () => {
+    if (!pendingAction) return;
+    const { booking, action } = pendingAction;
+    try {
+      setActionLoading(true);
+      await patchBooking(booking.id, { action });
+      toast.success(
+        `${action === "cancel" ? "Cancelled" : "Refunded"} — booking updated.`,
+      );
+      await load();
+    } catch (e) {
+      toast.error(`Failed to ${action} booking`, {
+        description: e instanceof Error ? e.message : "",
+      });
+    } finally {
+      setActionLoading(false);
+      setPendingAction(null);
+    }
+  }, [pendingAction, patchBooking, load]);
 
   return (
     <div className="space-y-6">
@@ -1167,7 +1516,7 @@ function BookingsSection() {
               </p>
             </div>
           ) : (
-            <div className="max-h-[600px] overflow-y-auto">
+            <div className="max-h-[600px] overflow-auto">
               <Table>
                 <TableHeader className="sticky top-0 z-10 bg-card">
                   <TableRow>
@@ -1180,83 +1529,250 @@ function BookingsSection() {
                     <TableHead className="text-right">Total</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Payment</TableHead>
+                    <TableHead className="text-right pr-4 sm:pr-6">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {bookings.map((b) => (
-                    <TableRow key={b.id}>
-                      <TableCell className="pl-4 sm:pl-6 font-mono text-xs font-semibold text-primary">
-                        {b.reference}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col">
-                          <span className="font-medium text-foreground">
-                            {b.customerName}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {b.customerEmail}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={
-                            b.type === "EXPERIENCE"
-                              ? "border-gold/30 text-gold-foreground"
-                              : "border-primary/30 text-primary"
-                          }
-                        >
-                          {b.type === "EXPERIENCE" ? (
-                            <Plane className="size-3" />
-                          ) : (
-                            <HotelIcon className="size-3" />
+                  {bookings.map((b) => {
+                    const cancellable =
+                      b.status === "PENDING" ||
+                      b.status === "SUPPLIER_CONFIRMED" ||
+                      b.status === "CUSTOMER_CONFIRMED" ||
+                      b.status === "CONFIRMED" ||
+                      b.status === "COMPLETED";
+                    const refundable =
+                      b.status === "CONFIRMED" || b.status === "COMPLETED";
+                    const isTerminal =
+                      b.status === "CANCELLED" || b.status === "REFUNDED";
+                    return (
+                      <TableRow key={b.id}>
+                        <TableCell className="pl-4 sm:pl-6 font-mono text-xs font-semibold text-primary">
+                          {b.reference}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-medium text-foreground">
+                              {b.customerName}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {b.customerEmail}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={
+                              b.type === "EXPERIENCE"
+                                ? "border-gold/30 text-gold-foreground"
+                                : "border-primary/30 text-primary"
+                            }
+                          >
+                            {b.type === "EXPERIENCE" ? (
+                              <Plane className="size-3" />
+                            ) : (
+                              <HotelIcon className="size-3" />
+                            )}
+                            {b.type}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="min-w-[180px]">
+                          <div className="flex flex-col">
+                            <span className="max-w-[200px] truncate font-medium text-foreground">
+                              {bookingItemTitle(b)}
+                            </span>
+                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <MapPin className="size-3" />
+                              {bookingDestination(b)}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {fmtDate(b.checkInDate)}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          <span className="text-foreground">{b.guests}</span>
+                          <span className="text-muted-foreground"> guests</span>
+                          {b.nights > 0 && (
+                            <>
+                              <span className="text-muted-foreground"> · </span>
+                              <span className="text-foreground">{b.nights}</span>
+                              <span className="text-muted-foreground"> nights</span>
+                            </>
                           )}
-                          {b.type}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="min-w-[180px]">
-                        <div className="flex flex-col">
-                          <span className="max-w-[200px] truncate font-medium text-foreground">
-                            {bookingItemTitle(b)}
-                          </span>
-                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <MapPin className="size-3" />
-                            {bookingDestination(b)}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {fmtDate(b.checkInDate)}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        <span className="text-foreground">{b.guests}</span>
-                        <span className="text-muted-foreground"> guests</span>
-                        {b.nights > 0 && (
-                          <>
-                            <span className="text-muted-foreground"> · </span>
-                            <span className="text-foreground">{b.nights}</span>
-                            <span className="text-muted-foreground"> nights</span>
-                          </>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {moneyDetailed.format(b.totalAmount)}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={b.status} />
-                      </TableCell>
-                      <TableCell>
-                        <PaymentBadge status={b.paymentStatus} />
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">
+                          {moneyDetailed.format(b.totalAmount)}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge status={b.status} />
+                        </TableCell>
+                        <TableCell>
+                          <PaymentBadge status={b.paymentStatus} />
+                        </TableCell>
+                        <TableCell className="pr-4 sm:pr-6">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="relative h-8 w-8 p-0"
+                              title="Inspect fraud details"
+                              onClick={() => setFraudBooking(b)}
+                            >
+                              <Eye className="size-4" />
+                              {b.isFlagged && (
+                                <span className="absolute right-1 top-1 size-1.5 rounded-full bg-destructive" />
+                              )}
+                            </Button>
+
+                            {b.status === "PENDING" && (
+                              <Button
+                                size="sm"
+                                variant="default"
+                                disabled={actionLoading}
+                                className="h-8 bg-emerald-600 text-white hover:bg-emerald-700"
+                                onClick={() =>
+                                  handleProgress(
+                                    b,
+                                    "confirm-supplier",
+                                    "Supplier confirmed",
+                                  )
+                                }
+                              >
+                                <CheckCircle2 className="size-3.5" />
+                                <span className="hidden lg:inline">Confirm Supplier</span>
+                                <span className="lg:hidden">Supplier</span>
+                              </Button>
+                            )}
+                            {b.status === "SUPPLIER_CONFIRMED" && (
+                              <Button
+                                size="sm"
+                                variant="default"
+                                disabled={actionLoading}
+                                className="h-8 bg-sky-600 text-white hover:bg-sky-700"
+                                onClick={() =>
+                                  handleProgress(
+                                    b,
+                                    "confirm-customer",
+                                    "Customer confirmed",
+                                  )
+                                }
+                              >
+                                <CheckCircle2 className="size-3.5" />
+                                <span className="hidden lg:inline">Confirm Customer</span>
+                                <span className="lg:hidden">Customer</span>
+                              </Button>
+                            )}
+                            {b.status === "CUSTOMER_CONFIRMED" && (
+                              <Button
+                                size="sm"
+                                variant="default"
+                                disabled={actionLoading}
+                                className="h-8 bg-amber-500 text-white hover:bg-amber-600"
+                                onClick={() =>
+                                  handleProgress(b, "confirm", "Booking confirmed")
+                                }
+                              >
+                                <CheckCircle2 className="size-3.5" />
+                                <span className="hidden lg:inline">Confirm Booking</span>
+                                <span className="lg:hidden">Confirm</span>
+                              </Button>
+                            )}
+
+                            {cancellable && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={actionLoading}
+                                className="h-8 border-destructive/30 text-destructive hover:bg-destructive/10"
+                                title="Cancel booking"
+                                onClick={() =>
+                                  setPendingAction({ booking: b, action: "cancel" })
+                                }
+                              >
+                                <XCircle className="size-3.5" />
+                                <span className="hidden xl:inline">Cancel</span>
+                              </Button>
+                            )}
+                            {refundable && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={actionLoading}
+                                className="h-8 border-orange-500/30 text-orange-600 hover:bg-orange-500/10 dark:text-orange-400"
+                                title="Refund booking"
+                                onClick={() =>
+                                  setPendingAction({ booking: b, action: "refund" })
+                                }
+                              >
+                                <RotateCcw className="size-3.5" />
+                                <span className="hidden xl:inline">Refund</span>
+                              </Button>
+                            )}
+                            {isTerminal && (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
           )}
         </CardContent>
       </Card>
+
+      <FraudDetailDialog
+        booking={fraudBooking}
+        open={!!fraudBooking}
+        onOpenChange={(o) => !o && setFraudBooking(null)}
+        onReview={handleReview}
+        loading={actionLoading}
+      />
+
+      <AlertDialog
+        open={!!pendingAction}
+        onOpenChange={(o) => !o && setPendingAction(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingAction?.action === "cancel"
+                ? "Cancel this booking?"
+                : "Refund this booking?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingAction?.action === "cancel"
+                ? `Booking ${pendingAction?.booking.reference} for ${pendingAction?.booking.customerName} will be cancelled. Availability will be restored. This action cannot be undone.`
+                : `Booking ${pendingAction?.booking.reference} for ${pendingAction?.booking.customerName} will be marked as refunded. Availability will be restored. This action cannot be undone.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={actionLoading}>
+              Keep booking
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={actionLoading}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleConfirmAction();
+              }}
+              className={cn(
+                pendingAction?.action === "cancel"
+                  ? "bg-destructive text-white hover:bg-destructive/90"
+                  : "bg-orange-500 text-white hover:bg-orange-600",
+              )}
+            >
+              {actionLoading && <Loader2 className="size-4 animate-spin" />}
+              {pendingAction?.action === "cancel"
+                ? "Yes, cancel"
+                : "Yes, refund"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -1708,24 +2224,36 @@ function AnalyticsSection() {
           <CardContent className="space-y-4">
             <StatusStackedBar breakdown={stats.statusBreakdown} />
             <Separator />
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <StatusMini
+                icon={Clock}
+                label="Pending"
+                value={stats.statusBreakdown.PENDING}
+                tone="amber"
+              />
+              <StatusMini
+                icon={CheckCircle2}
+                label="Supplier"
+                value={stats.statusBreakdown.SUPPLIER_CONFIRMED}
+                tone="primary"
+              />
+              <StatusMini
+                icon={CheckCircle2}
+                label="Customer"
+                value={stats.statusBreakdown.CUSTOMER_CONFIRMED}
+                tone="emerald"
+              />
               <StatusMini
                 icon={CheckCircle2}
                 label="Confirmed"
                 value={stats.statusBreakdown.CONFIRMED}
-                tone="primary"
+                tone="emerald"
               />
               <StatusMini
                 icon={CheckCircle2}
                 label="Completed"
                 value={stats.statusBreakdown.COMPLETED}
-                tone="emerald"
-              />
-              <StatusMini
-                icon={Clock}
-                label="Pending"
-                value={stats.statusBreakdown.PENDING}
-                tone="muted"
+                tone="primary"
               />
               <StatusMini
                 icon={XCircle}
@@ -1966,7 +2494,7 @@ function AIInsightsSection() {
 - Catalog: ${k.totalExperiences} experiences, ${k.totalHotels} hotels across ${k.totalDestinations} destinations
 - Reviews collected: ${k.totalReviews}
 - Revenue by type: Experiences ${money.format(stats.revenueByType.EXPERIENCE)} (${((stats.revenueByType.EXPERIENCE / Math.max(1, stats.revenueByType.EXPERIENCE + stats.revenueByType.HOTEL)) * 100).toFixed(0)}%), Hotels ${money.format(stats.revenueByType.HOTEL)} (${((stats.revenueByType.HOTEL / Math.max(1, stats.revenueByType.EXPERIENCE + stats.revenueByType.HOTEL)) * 100).toFixed(0)}%)
-- Status breakdown: Confirmed ${stats.statusBreakdown.CONFIRMED}, Completed ${stats.statusBreakdown.COMPLETED}, Cancelled ${stats.statusBreakdown.CANCELLED}, Refunded ${stats.statusBreakdown.REFUNDED}, Pending ${stats.statusBreakdown.PENDING}
+- Status breakdown: Pending ${stats.statusBreakdown.PENDING}, Supplier-confirmed ${stats.statusBreakdown.SUPPLIER_CONFIRMED}, Customer-confirmed ${stats.statusBreakdown.CUSTOMER_CONFIRMED}, Confirmed ${stats.statusBreakdown.CONFIRMED}, Completed ${stats.statusBreakdown.COMPLETED}, Cancelled ${stats.statusBreakdown.CANCELLED}, Refunded ${stats.statusBreakdown.REFUNDED}
 - Last 7 days revenue trend: ${stats.revenueTrend.map((d) => `${d.date.slice(5)}: ${money.format(d.revenue)} (${d.bookings} bookings)`).join("; ")}
 
 Based on this data, provide:
@@ -2001,12 +2529,13 @@ Be specific, quantitative where possible, and concise. Use clean markdown bullet
     void loadStats();
   }, [loadStats]);
 
-  // Auto-generate once stats are ready
+  // Auto-generate once stats are ready (but only on the first successful
+  // stats load, never after an error to avoid infinite retry loops).
   useEffect(() => {
-    if (stats && !reply && !loadingAI) {
+    if (stats && !reply && !loadingAI && !aiError) {
       void generateInsights();
     }
-  }, [stats, reply, loadingAI, generateInsights]);
+  }, [stats, reply, loadingAI, aiError, generateInsights]);
 
   return (
     <div className="space-y-6">

@@ -110,7 +110,7 @@ export async function POST(req: NextRequest) {
       taxesAndFees: parseFloat(taxesAndFees),
       discount: parseFloat(discount),
       totalAmount: parseFloat(totalAmount),
-      status: "CONFIRMED",
+      status: "PENDING",
       paymentStatus: "PAID",
       paymentMethod: "CARD",
       customerName,

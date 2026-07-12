@@ -44,11 +44,13 @@ export async function GET() {
 
   // Status breakdown
   const statusBreakdown = {
+    PENDING: bookings.filter((b) => b.status === "PENDING").length,
+    SUPPLIER_CONFIRMED: bookings.filter((b) => b.status === "SUPPLIER_CONFIRMED").length,
+    CUSTOMER_CONFIRMED: bookings.filter((b) => b.status === "CUSTOMER_CONFIRMED").length,
     CONFIRMED: bookings.filter((b) => b.status === "CONFIRMED").length,
     COMPLETED: bookings.filter((b) => b.status === "COMPLETED").length,
     CANCELLED: bookings.filter((b) => b.status === "CANCELLED").length,
     REFUNDED: bookings.filter((b) => b.status === "REFUNDED").length,
-    PENDING: bookings.filter((b) => b.status === "PENDING").length,
   };
 
   // Last 7 days revenue trend
