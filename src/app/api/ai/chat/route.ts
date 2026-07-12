@@ -121,9 +121,10 @@ CRITICAL RULES (never break these):
 
     return NextResponse.json({ reply });
   } catch (err) {
-    console.error("AI chat error:", err);
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error("AI chat error:", errMsg);
     return NextResponse.json(
-      { error: "AI assistant is unavailable. Please try again shortly." },
+      { error: `AI error: ${errMsg}` },
       { status: 502 }
     );
   }
