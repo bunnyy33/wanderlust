@@ -2,7 +2,7 @@
 // Uses Llama 3.3 70B (very capable, OpenAI-compatible API)
 // Get a free API key at: https://console.groq.com/keys
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY || "gsk_D8aT7S5G4bF2mN8pK3qW6vY1xZ0aH5jC7rT4sU9i";
+const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 
