@@ -104,11 +104,16 @@ Respond with VALID JSON ONLY (no markdown, no prose before/after) matching this 
 }`;
 
   try {
-    const { zaiChat } = await import("@/lib/zai-client");
-    const raw = await zaiChat([
-      { role: "assistant", content: systemPrompt },
-      { role: "user", content: userBrief },
-    ]);
+    const { getZai } = await import("@/lib/zai");
+    const zai = await getZai();
+    const completion = await zai.chat.completions.create({
+      messages: [
+        { role: "assistant", content: systemPrompt },
+        { role: "user", content: userBrief },
+      ],
+      thinking: { type: "disabled" },
+    });
+    const raw = completion.choices[0]?.message?.content || "";
     // Extract JSON from response (handle markdown wrapping)
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     let plan;

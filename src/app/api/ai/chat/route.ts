@@ -83,8 +83,13 @@ CRITICAL RULES (never break these):
   ];
 
   try {
-    const { zaiChat } = await import("@/lib/zai-client");
-    let reply = await zaiChat(mapped);
+    const { getZai } = await import("@/lib/zai");
+    const zai = await getZai();
+    const completion = await zai.chat.completions.create({
+      messages: mapped,
+      thinking: { type: "disabled" },
+    });
+    let reply = completion.choices[0]?.message?.content || "";
 
     // Strip any markdown that slipped through
     reply = reply
@@ -116,10 +121,9 @@ CRITICAL RULES (never break these):
 
     return NextResponse.json({ reply });
   } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    console.error("AI chat error:", errMsg);
+    console.error("AI chat error:", err);
     return NextResponse.json(
-      { error: `AI error: ${errMsg}` },
+      { error: "AI assistant is unavailable. Please try again shortly." },
       { status: 502 }
     );
   }
