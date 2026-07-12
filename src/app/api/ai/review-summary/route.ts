@@ -18,16 +18,11 @@ export async function POST(req: NextRequest) {
   const reviewText = reviews.map((r) => `(${r.rating}★) ${r.title}: ${r.comment}`).join("\n");
   const systemPrompt = `You are a travel review analyst. Given traveler reviews, produce a concise summary. Respond with VALID JSON ONLY: { "loved": ["3 short phrases"], "watchOut": ["1-2 short things or empty array"], "verdict": "one punchy sentence" }. Keep phrases under 6 words.`;
   try {
-    const { getZai } = await import("@/lib/zai");
-    const zai = await getZai();
-    const completion = await zai.chat.completions.create({
-      messages: [
-        { role: "assistant", content: systemPrompt },
-        { role: "user", content: `Reviews:\n${reviewText}` },
-      ],
-      thinking: { type: "disabled" },
-    });
-    const raw = completion.choices[0]?.message?.content || "";
+    const { aiChat } = await import("@/lib/ai-client");
+    const raw = await aiChat([
+      { role: "assistant", content: systemPrompt },
+      { role: "user", content: `Reviews:\n${reviewText}` },
+    ]);
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     try {
       const summary = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(raw);
