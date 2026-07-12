@@ -52,16 +52,11 @@ Respond with VALID JSON ONLY matching:
 Pick exactly 6 ids that exist in the catalog. Respect budget. Prefer matching destination/vibe/weather.`;
 
   try {
-    const { getZai } = await import("@/lib/zai");
-    const zai = await getZai();
-    const completion = await zai.chat.completions.create({
-      messages: [
-        { role: "assistant", content: systemPrompt },
-        { role: "user", content: brief },
-      ],
-      thinking: { type: "disabled" },
-    });
-    const raw = completion.choices[0]?.message?.content || "";
+    const { zaiChat } = await import("@/lib/zai-client");
+    const raw = await zaiChat([
+      { role: "assistant", content: systemPrompt },
+      { role: "user", content: brief },
+    ]);
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     let parsed: { recommendations: { id: string; reason: string }[] };
     try {

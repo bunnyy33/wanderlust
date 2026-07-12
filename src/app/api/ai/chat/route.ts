@@ -83,13 +83,8 @@ CRITICAL RULES (never break these):
   ];
 
   try {
-    const { getZai } = await import("@/lib/zai");
-    const zai = await getZai();
-    const completion = await zai.chat.completions.create({
-      messages: mapped,
-      thinking: { type: "disabled" },
-    });
-    let reply = completion.choices[0]?.message?.content || "";
+    const { zaiChat } = await import("@/lib/zai-client");
+    let reply = await zaiChat(mapped);
 
     // Strip any markdown that slipped through
     reply = reply
