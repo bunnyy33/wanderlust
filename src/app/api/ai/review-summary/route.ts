@@ -18,8 +18,8 @@ export async function POST(req: NextRequest) {
   const reviewText = reviews.map((r) => `(${r.rating}★) ${r.title}: ${r.comment}`).join("\n");
   const systemPrompt = `You are a travel review analyst. Given traveler reviews, produce a concise summary. Respond with VALID JSON ONLY: { "loved": ["3 short phrases"], "watchOut": ["1-2 short things or empty array"], "verdict": "one punchy sentence" }. Keep phrases under 6 words.`;
   try {
-    const ZAI = (await import("z-ai-web-dev-sdk")).default;
-    const zai = await ZAI.create();
+    const { getZai } = await import("@/lib/zai");
+    const zai = await getZai();
     const completion = await zai.chat.completions.create({
       messages: [{ role: "assistant", content: systemPrompt }, { role: "user", content: `Reviews:\n${reviewText}` }],
       thinking: { type: "disabled" },

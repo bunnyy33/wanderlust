@@ -52,8 +52,8 @@ Respond with VALID JSON ONLY matching:
 Pick exactly 6 ids that exist in the catalog. Respect budget. Prefer matching destination/vibe/weather.`;
 
   try {
-    const ZAI = (await import("z-ai-web-dev-sdk")).default;
-    const zai = await ZAI.create();
+    const { getZai } = await import("@/lib/zai");
+    const zai = await getZai();
     const completion = await zai.chat.completions.create({
       messages: [
         { role: "assistant", content: systemPrompt },

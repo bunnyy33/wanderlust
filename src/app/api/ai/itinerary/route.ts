@@ -104,8 +104,8 @@ Respond with VALID JSON ONLY (no markdown, no prose before/after) matching this 
 }`;
 
   try {
-    const ZAI = (await import("z-ai-web-dev-sdk")).default;
-    const zai = await ZAI.create();
+    const { getZai } = await import("@/lib/zai");
+    const zai = await getZai();
     const completion = await zai.chat.completions.create({
       messages: [
         { role: "assistant", content: systemPrompt },

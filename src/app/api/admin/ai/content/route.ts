@@ -35,8 +35,8 @@ Then exactly 3 FAQ objects each with a question ("q") and answer ("a", 1-2 sente
 Return STRICT JSON ONLY — no markdown, no prose, no code fences. Schema:
 {"longDescription": string, "highlights": string[5], "seoTitle": string, "faqs": [{"q": string, "a": string}]}`;
 
-    const ZAI = (await import("z-ai-web-dev-sdk")).default;
-    const zai = await ZAI.create();
+    const { getZai } = await import("@/lib/zai");
+    const zai = await getZai();
     const completion = await zai.chat.completions.create({
       messages: [
         { role: "system", content: systemPrompt },
