@@ -16,6 +16,7 @@ import {
   ArrowUpRight,
   BarChart3,
   BookOpen,
+  Briefcase,
   CalendarCheck,
   CheckCircle2,
   Clock,
@@ -98,6 +99,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CatalogManager } from "@/components/site/catalog-manager";
+import { AgencyDashboard } from "@/components/site/agency-dashboard";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                              */
@@ -148,7 +150,15 @@ interface AdminStats {
   recentBookings: RecentBooking[];
 }
 
-type SectionId = "overview" | "bookings" | "catalog" | "analytics" | "ai" | "notifications" | "chats";
+type SectionId =
+  | "overview"
+  | "bookings"
+  | "catalog"
+  | "analytics"
+  | "ai"
+  | "notifications"
+  | "chats"
+  | "agency";
 
 /* ------------------------------------------------------------------ */
 /* Formatters                                                         */
@@ -285,6 +295,7 @@ const SECTIONS: {
   { id: "bookings", label: "Bookings", icon: CalendarCheck },
   { id: "catalog", label: "Catalog", icon: BookOpen },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
+  { id: "agency", label: "Agency", icon: Briefcase },
   { id: "ai", label: "AI Insights", icon: Sparkles },
   { id: "chats", label: "AI Chats", icon: MessageSquare },
   { id: "notifications", label: "Notifications", icon: Mail },
@@ -630,6 +641,7 @@ export function AdminDashboard({
           {section === "bookings" && <BookingsSection />}
           {section === "catalog" && <CatalogSection />}
           {section === "analytics" && <AnalyticsSection />}
+          {section === "agency" && <AgencyDashboard onExit={onExit} />}
           {section === "ai" && <AIInsightsSection />}
           {section === "notifications" && <NotificationsSection />}
           {section === "chats" && <ChatLogsSection />}

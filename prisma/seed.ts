@@ -4127,6 +4127,200 @@ async function main() {
   }
   console.log(`  ✓ ${coupons.length} coupons seeded`);
 
+  // ---- Agency seed: employees + suppliers + 1 demo reservation ----
+  const bcrypt = (await import("bcryptjs")).default;
+
+  const employees = [
+    { name: "Sarah Al Marri", email: "sarah@wanderlust.ae", role: "ADMIN", phone: "+971 50 123 4567" },
+    { name: "James Wilson", email: "james@wanderlust.ae", role: "SENIOR_AGENT", phone: "+971 50 234 5678" },
+    { name: "Aisha Khan", email: "aisha@wanderlust.ae", role: "JUNIOR_AGENT", phone: "+971 50 345 6789" },
+    { name: "Mohammed Ali", email: "mohammed@wanderlust.ae", role: "ACCOUNTS", phone: "+971 50 456 7890" },
+  ];
+  const employeeIds: string[] = [];
+  for (const e of employees) {
+    const existing = await db.employee.findUnique({ where: { email: e.email } });
+    if (existing) {
+      employeeIds.push(existing.id);
+      continue;
+    }
+    const created = await db.employee.create({
+      data: {
+        ...e,
+        passwordHash: await bcrypt.hash("wanderlust123", 10),
+        active: true,
+      },
+    });
+    employeeIds.push(created.id);
+  }
+  console.log(`  ✓ ${employees.length} employees seeded`);
+
+  const suppliers = [
+    { name: "Arabian Adventures", type: "TOUR", contactPerson: "Ahmed Hassan", email: "ops@arabianadventures.ae", phone: "+971 4 303 8888", whatsapp: "+971 50 100 2000", city: "Dubai", country: "UAE", currency: "AED", paymentTerms: "30 days credit", markupType: "PERCENT", markupValue: 20, rating: 5, active: true },
+    { name: "Platinum Heritage", type: "TOUR", contactPerson: "Layla Faisal", email: "reservations@platinum-heritage.com", phone: "+971 4 440 9444", whatsapp: "+971 50 200 3000", city: "Dubai", country: "UAE", currency: "AED", paymentTerms: "Prepaid", markupType: "PERCENT", markupValue: 25, rating: 5, active: true },
+    { name: "Atlantis Resorts", type: "HOTEL", contactPerson: "Reservations Desk", email: "reservations@atlantisthepalm.com", phone: "+971 4 426 2000", whatsapp: "+971 50 300 4000", city: "Dubai", country: "UAE", currency: "AED", paymentTerms: "On arrival", markupType: "PERCENT", markupValue: 15, rating: 5, active: true },
+    { name: "Jumeirah Group", type: "HOTEL", contactPerson: "Group Bookings", email: "groups@jumeirah.com", phone: "+971 4 364 7700", whatsapp: "+971 50 400 5000", city: "Dubai", country: "UAE", currency: "AED", paymentTerms: "14 days credit", markupType: "PERCENT", markupValue: 18, rating: 5, active: true },
+    { name: "Dubai Luxury Transfers", type: "TRANSPORT", contactPerson: "Faisal Khan", email: "info@dltransfers.ae", phone: "+971 4 555 1212", whatsapp: "+971 50 500 6000", city: "Dubai", country: "UAE", currency: "AED", paymentTerms: "Prepaid", markupType: "FIXED", markupValue: 50, rating: 4, active: true },
+    { name: "Marine Luxury Charters", type: "TOUR", contactPerson: "Captain Saeed", email: "bookings@marinecharters.ae", phone: "+971 4 442 5555", whatsapp: "+971 50 600 7000", city: "Dubai", country: "UAE", currency: "AED", paymentTerms: "On arrival", markupType: "PERCENT", markupValue: 22, rating: 4, active: true },
+  ];
+  for (const s of suppliers) {
+    const exists = await db.supplier.findFirst({ where: { name: s.name } });
+    if (!exists) {
+      await db.supplier.create({ data: { ...s, address: `${s.city}, ${s.country}` } });
+    }
+  }
+  console.log(`  ✓ ${suppliers.length} suppliers seeded`);
+
+  // 1 demo reservation with a tour + hotel + payment
+  const existingDemo = await db.reservation.findFirst({ where: { reference: "WL-RES-100001" } });
+  if (!existingDemo) {
+    const saleById = employeeIds[1]; // James Wilson (Senior Agent)
+    const supplierTour = await db.supplier.findFirst({ where: { name: "Arabian Adventures" } });
+    const supplierHotel = await db.supplier.findFirst({ where: { name: "Atlantis Resorts" } });
+
+    const reservation = await db.reservation.create({
+      data: {
+        reference: "WL-RES-100001",
+        invoiceNumber: "WL-INV-100001",
+        customerName: "John Anderson",
+        customerEmail: "john.anderson@example.com",
+        customerPhone: "+971 55 123 4567",
+        isGuest: false,
+        orderDate: new Date(),
+        bookingStatus: "CONFIRMED",
+        saleById,
+        createdById: saleById,
+        invoiceType: "TAXABLE",
+        currency: "AED",
+        remarks: "VIP client — anniversary trip.",
+        termsAccepted: true,
+      },
+    });
+
+    const tourDate = new Date(Date.now() + 7 * 86400000);
+    await db.tourBooking.create({
+      data: {
+        reservationId: reservation.id,
+        tourName: "Premium Desert Safari with BBQ Dinner",
+        tourOption: "Overnight Camp",
+        transferOption: "PRIVATE",
+        pickupLocation: "Atlantis The Palm — Main Lobby",
+        tourDate,
+        pickupTime: "15:30",
+        timeSlot: "Evening",
+        noOfAdults: 2,
+        noOfChildren: 0,
+        supplierId: supplierTour?.id,
+        supplierName: supplierTour?.name,
+        confirmationNumber: "AA-7841",
+        status: "SUPPLIER_CONFIRMED",
+        costUnit: "PER_PERSON",
+        adultCostRate: 180,
+        childCostRate: 90,
+        carCostRate: 250,
+        netAdultRate: 360,
+        netChildRate: 0,
+        totalCost: 610,
+        adultSellRate: 250,
+        childSellRate: 120,
+        carSellRate: 350,
+        sellNetAdult: 500,
+        sellNetChild: 0,
+        totalSell: 850,
+        showOnVoucher: true,
+        createdBy: saleById,
+      },
+    });
+
+    const checkIn = new Date(Date.now() + 5 * 86400000);
+    const checkOut = new Date(Date.now() + 8 * 86400000);
+    await db.hotelBooking.create({
+      data: {
+        reservationId: reservation.id,
+        hotelName: "Atlantis The Palm",
+        roomType: "Sky Pool Suite",
+        mealPlan: "HB",
+        checkInDate: checkIn,
+        checkOutDate: checkOut,
+        nights: 3,
+        noOfRooms: 1,
+        noOfAdults: 2,
+        noOfChildren: 0,
+        supplierId: supplierHotel?.id,
+        supplierName: supplierHotel?.name,
+        confirmationNumber: "AT-9920",
+        status: "CONFIRMED",
+        costPerNight: 2200,
+        totalCost: 6600,
+        sellPerNight: 2950,
+        totalSell: 8850,
+        showOnVoucher: true,
+        createdBy: saleById,
+      },
+    });
+
+    await db.guest.create({
+      data: {
+        reservationId: reservation.id,
+        title: "Mr",
+        fullName: "John Anderson",
+        email: "john.anderson@example.com",
+        phone: "+971 55 123 4567",
+        passportNumber: "P12345678",
+        paxType: "ADULT",
+        nationality: "United Kingdom",
+      },
+    });
+    await db.guest.create({
+      data: {
+        reservationId: reservation.id,
+        title: "Mrs",
+        fullName: "Emily Anderson",
+        email: "emily.anderson@example.com",
+        phone: "+971 55 123 4567",
+        passportNumber: "P12345679",
+        paxType: "ADULT",
+        nationality: "United Kingdom",
+      },
+    });
+
+    await db.payment.create({
+      data: {
+        reservationId: reservation.id,
+        amount: 5000,
+        currency: "AED",
+        paymentMethod: "CARD",
+        paymentDate: new Date(),
+        reference: "TXN-5512-8841",
+        status: "RECEIVED",
+        notes: "50% deposit",
+        receivedBy: employeeIds[3],
+      },
+    });
+
+    // Recompute totals
+    const refreshed = await db.reservation.findUnique({
+      where: { id: reservation.id },
+      include: { tours: true, transports: true, hotels: true, payments: true },
+    });
+    if (refreshed) {
+      const subTotal =
+        refreshed.tours.reduce((s, t) => s + t.totalSell, 0) +
+        refreshed.transports.reduce((s, t) => s + t.sellRate, 0) +
+        refreshed.hotels.reduce((s, t) => s + t.totalSell, 0);
+      const vatAmount = subTotal * 0.05;
+      const totalAmount = subTotal + vatAmount;
+      const amountPaid = refreshed.payments
+        .filter((p) => p.status !== "REFUNDED")
+        .reduce((s, p) => s + p.amount, 0);
+      const balanceDue = Math.max(0, totalAmount - amountPaid);
+      await db.reservation.update({
+        where: { id: reservation.id },
+        data: { subTotal, vatAmount, totalAmount, amountPaid, balanceDue },
+      });
+    }
+    console.log("  ✓ 1 demo reservation seeded");
+  }
+
   console.log("✅ Seeding complete!");
 }
 
