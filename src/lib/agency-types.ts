@@ -175,6 +175,13 @@ export interface ReservationT {
   balanceDue: number;
   remarks?: string | null;
   termsAccepted: boolean;
+  // Fraud detection
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  fraudScore: number;
+  fraudSignals: string; // JSON array string
+  isFlagged: boolean;
+  manualReview: string; // PENDING | REAL | SPAM
   tours: TourBookingT[];
   transports: TransportBookingT[];
   hotels: HotelBookingT[];
@@ -201,6 +208,13 @@ export interface ReservationListItemT {
   saleByName?: string | null;
   serviceCount: number;
   firstServiceName?: string | null;
+  // Fraud detection (for the eye-button verification dialog)
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  fraudScore: number;
+  fraudSignals: string; // JSON array string
+  isFlagged: boolean;
+  manualReview: string; // PENDING | REAL | SPAM
   createdAt: string;
 }
 
@@ -404,6 +418,12 @@ export function serializeReservation(r: any): ReservationT {
     balanceDue: r.balanceDue,
     remarks: r.remarks ?? null,
     termsAccepted: r.termsAccepted,
+    ipAddress: r.ipAddress ?? null,
+    userAgent: r.userAgent ?? null,
+    fraudScore: r.fraudScore ?? 0,
+    fraudSignals: r.fraudSignals ?? "[]",
+    isFlagged: Boolean(r.isFlagged ?? false),
+    manualReview: r.manualReview ?? "PENDING",
     tours: (r.tours ?? []).map(serializeTourBooking),
     transports: (r.transports ?? []).map(serializeTransportBooking),
     hotels: (r.hotels ?? []).map(serializeHotelBooking),
@@ -447,6 +467,12 @@ export function serializeReservationListItem(r: any): ReservationListItemT {
     saleByName: r.employee?.name ?? null,
     serviceCount: tours.length + transports.length + hotels.length,
     firstServiceName,
+    ipAddress: r.ipAddress ?? null,
+    userAgent: r.userAgent ?? null,
+    fraudScore: r.fraudScore ?? 0,
+    fraudSignals: r.fraudSignals ?? "[]",
+    isFlagged: Boolean(r.isFlagged ?? false),
+    manualReview: r.manualReview ?? "PENDING",
     createdAt: r.createdAt?.toISOString?.() ?? r.createdAt,
   };
 }

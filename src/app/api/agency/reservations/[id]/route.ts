@@ -77,6 +77,15 @@ export async function PUT(req: NextRequest, { params }: ctx) {
     if (body.remarks !== undefined) data.remarks = body.remarks ? String(body.remarks) : null;
     if (body.termsAccepted !== undefined)
       data.termsAccepted = Boolean(body.termsAccepted);
+    // Fraud fields
+    if (body.manualReview !== undefined) {
+      const review = String(body.manualReview);
+      if (["PENDING", "REAL", "SPAM"].includes(review)) {
+        data.manualReview = review;
+      }
+    }
+    if (body.isFlagged !== undefined) data.isFlagged = Boolean(body.isFlagged);
+    if (body.fraudScore !== undefined) data.fraudScore = Number(body.fraudScore) || 0;
 
     const updated = await db.reservation.update({
       where: { id },
@@ -115,6 +124,72 @@ export async function PUT(req: NextRequest, { params }: ctx) {
     return NextResponse.json({ reservation: serializeReservation(final_) });
   } catch (err) {
     console.error("agency reservation PUT error:", err);
+    return NextResponse.json(
+      { error: "Failed to update reservation" },
+      { status: 500 },
+    );
+  }
+}
+
+// PATCH /api/agency/reservations/[id] — partial update
+// Used by the booking list "Open" button to flip status → "In Process",
+// and by the eye-dialog Real / Spam / Reset buttons to update manualReview.
+// Body: { bookingStatus?, manualReview?, isFlagged? }
+export async function PATCH(req: NextRequest, { params }: ctx) {
+  if (!(await isAdminAuthed())) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  try {
+    const { id } = await params;
+    const body = await req.json();
+    const existing = await db.reservation.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json(
+        { error: "Reservation not found" },
+        { status: 404 },
+      );
+    }
+
+    const data: any = {};
+    if (body.bookingStatus !== undefined) {
+      const status = String(body.bookingStatus);
+      const allowed = [
+        "PENDING",
+        "SUPPLIER_PENDING",
+        "SUPPLIER_CONFIRMED",
+        "CUSTOMER_CONFIRMED",
+        "COMPLETED",
+        "CANCELLED",
+      ];
+      if (allowed.includes(status)) {
+        data.bookingStatus = status;
+      }
+    }
+    if (body.manualReview !== undefined) {
+      const review = String(body.manualReview);
+      if (["PENDING", "REAL", "SPAM"].includes(review)) {
+        data.manualReview = review;
+      }
+    }
+    if (body.isFlagged !== undefined) data.isFlagged = Boolean(body.isFlagged);
+    if (body.fraudScore !== undefined) data.fraudScore = Number(body.fraudScore) || 0;
+
+    const updated = await db.reservation.update({
+      where: { id },
+      data,
+      include: {
+        tours: true,
+        transports: true,
+        hotels: true,
+        guests: true,
+        payments: true,
+        employee: true,
+      },
+    });
+
+    return NextResponse.json({ reservation: serializeReservation(updated) });
+  } catch (err) {
+    console.error("agency reservation PATCH error:", err);
     return NextResponse.json(
       { error: "Failed to update reservation" },
       { status: 500 },

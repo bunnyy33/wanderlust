@@ -5,9 +5,13 @@
  *
  * B2B travel agency management UI. The screen has exactly two views:
  *
- *   View 1 — Booking List: a dense table of reservations with search +
- *             status filter + "New Booking" CTA. Each row has an eye (View)
- *             and an "Open" CTA that both open the reservation detail.
+ *   View 1 — Booking List: KPI cards at the top (Total Bookings, Revenue,
+ *             Pending, Completed) + a dense table of reservations with search
+ *             + status filter + "New Booking" CTA. Each row has an eye (View)
+ *             button that opens a DIALOG showing fraud-verification info and
+ *             manual review actions (Real / Spam / Reset), and an "Open" CTA
+ *             that opens the reservation detail page AND auto-flips the
+ *             booking status to "In Process" via PATCH.
  *
  *   View 2 — Reservation Detail: ONE scrollable page (not a wizard, not
  *             multi-step tabs that switch pages) with three inline sections:
@@ -28,7 +32,9 @@ import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
+  ArrowUpRight,
   Banknote,
   Briefcase,
   Building2,
@@ -36,8 +42,11 @@ import {
   Check,
   CheckCircle2,
   ChevronRight,
+  Clock,
   CreditCard,
   Eye,
+  Fingerprint,
+  Globe,
   Home as HomeIcon,
   Hotel as HotelIcon,
   Info,
@@ -52,7 +61,9 @@ import {
   Save,
   Search,
   Settings,
+  ShieldAlert,
   ShieldCheck,
+  ShieldX,
   Sparkles,
   Sticker,
   Trash2,
@@ -693,6 +704,7 @@ function AddSupplierButton({
 
 export function AgencyDashboard({ onExit }: { onExit?: () => void }) {
   const [activeReservationId, setActiveReservationId] = useState<string | null>(null);
+  const [viewDialogReservation, setViewDialogReservation] = useState<ReservationListItemT | null>(null);
   const [listKey, setListKey] = useState(0);
 
   const handleOpen = (id: string) => setActiveReservationId(id);
@@ -701,18 +713,10 @@ export function AgencyDashboard({ onExit }: { onExit?: () => void }) {
     setListKey((k) => k + 1); // refresh list after edits
   };
 
-  if (activeReservationId) {
-    return (
-      <ReservationDetail
-        reservationId={activeReservationId}
-        onBack={handleBack}
-        onExit={onExit}
-      />
-    );
-  }
-  const handleView = (id: string) => {
-    // Eye button: same as Open — opens the detail page
-    setActiveReservationId(id);
+  // Eye-button handler: open the verification DIALOG (does NOT navigate,
+  // does NOT change status). Agents inspect fraud data first.
+  const handleViewDialog = (r: ReservationListItemT) => {
+    setViewDialogReservation(r);
   };
 
   if (activeReservationId) {
@@ -724,7 +728,35 @@ export function AgencyDashboard({ onExit }: { onExit?: () => void }) {
       />
     );
   }
-  return <BookingList onOpen={handleOpen} onView={handleView} onExit={onExit} refreshKey={listKey} />;
+
+  return (
+    <>
+      <BookingList
+        onOpen={handleOpen}
+        onView={handleViewDialog}
+        onExit={onExit}
+        refreshKey={listKey}
+        onReservationUpdated={(updated) => {
+          // Replace the dialog's snapshot so the latest fraud/manualReview shows.
+          if (viewDialogReservation && viewDialogReservation.id === updated.id) {
+            setViewDialogReservation(updated);
+          }
+        }}
+      />
+      {viewDialogReservation && (
+        <BookingVerificationDialog
+          reservation={viewDialogReservation}
+          onClose={() => setViewDialogReservation(null)}
+          onViewFull={(id) => {
+            setViewDialogReservation(null);
+            setActiveReservationId(id);
+            setListKey((k) => k + 1);
+          }}
+          onUpdated={(updated) => setViewDialogReservation(updated)}
+        />
+      )}
+    </>
+  );
 }
 
 /* ================================================================== */
@@ -736,17 +768,20 @@ function BookingList({
   onExit,
   onView,
   refreshKey,
+  onReservationUpdated,
 }: {
   onOpen: (id: string) => void;
-  onView: (id: string) => void;
+  onView: (r: ReservationListItemT) => void;
   onExit?: () => void;
   refreshKey: number;
+  onReservationUpdated?: (r: ReservationListItemT) => void;
 }) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("ALL");
   const [items, setItems] = useState<ReservationListItemT[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -793,6 +828,54 @@ function BookingList({
     }
   }
 
+  // Open button: PATCH status → "In Process" (PENDING), THEN navigate.
+  // Other agents immediately see this booking is being handled.
+  async function handleOpen(id: string) {
+    setOpeningId(id);
+    try {
+      const res = await fetch(`/api/agency/reservations/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingStatus: "PENDING" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      // Reflect the status change locally so the list updates instantly.
+      setItems((prev) =>
+        prev.map((r) =>
+          r.id === id
+            ? { ...r, bookingStatus: "PENDING", ...(data.reservation ?? {}) }
+            : r,
+        ),
+      );
+      onReservationUpdated?.(
+        items.find((r) => r.id === id) ?? data.reservation,
+      );
+      onOpen(id);
+    } catch (e: any) {
+      // Still navigate — the user explicitly clicked Open.
+      toast.error(e.message ?? "Could not flip status, opening anyway");
+      onOpen(id);
+    } finally {
+      setOpeningId(null);
+    }
+  }
+
+  // KPI cards — computed from the currently-loaded items.
+  const kpis = useMemo(() => {
+    const total = items.length;
+    const revenue = items.reduce((s, r) => s + (r.totalAmount || 0), 0);
+    const currency = items[0]?.currency ?? "AED";
+    const pending = items.filter((r) =>
+      ["PENDING", "SUPPLIER_PENDING"].includes(r.bookingStatus),
+    ).length;
+    const completed = items.filter(
+      (r) => r.bookingStatus === "COMPLETED",
+    ).length;
+    const flagged = items.filter((r) => r.isFlagged).length;
+    return { total, revenue, currency, pending, completed, flagged };
+  }, [items]);
+
   return (
     <div className="flex flex-col gap-5">
       {/* Page header */}
@@ -830,6 +913,38 @@ function BookingList({
             New Booking
           </Button>
         </div>
+      </div>
+
+      {/* KPI cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard
+          label="Total Bookings"
+          value={kpis.total.toString()}
+          icon={Briefcase}
+          tone="primary"
+          hint={kpis.flagged > 0 ? `${kpis.flagged} flagged` : "All reviewed"}
+        />
+        <KpiCard
+          label="Revenue"
+          value={money(kpis.currency, kpis.revenue)}
+          icon={ArrowUpRight}
+          tone="gold"
+          hint="Sum of all reservations"
+        />
+        <KpiCard
+          label="Pending"
+          value={kpis.pending.toString()}
+          icon={Clock}
+          tone="amber"
+          hint="Awaiting confirmation"
+        />
+        <KpiCard
+          label="Completed"
+          value={kpis.completed.toString()}
+          icon={CheckCircle2}
+          tone="emerald"
+          hint="Closed successfully"
+        />
       </div>
 
       {/* Filter bar */}
@@ -894,9 +1009,17 @@ function BookingList({
                     <TableRow key={r.id} className="hover:bg-muted/40">
                       <TableCell>
                         <div className="flex flex-col gap-1">
-                          <span className="font-mono text-sm font-semibold text-primary">
-                            {r.reference}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-sm font-semibold text-primary">
+                              {r.reference}
+                            </span>
+                            {r.isFlagged && (
+                              <span
+                                className="inline-block size-2 rounded-full bg-rose-500"
+                                title="Flagged — high fraud risk"
+                              />
+                            )}
+                          </div>
                           <StatusBadge status={r.bookingStatus} />
                         </div>
                       </TableCell>
@@ -930,8 +1053,11 @@ function BookingList({
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="size-8 text-primary hover:bg-primary/10"
-                          onClick={() => onView(r.id)}
+                          className={cn(
+                            "size-8 text-primary hover:bg-primary/10",
+                            r.isFlagged && "ring-1 ring-rose-300",
+                          )}
+                          onClick={() => onView(r)}
                           title="View fraud & booking details"
                         >
                           <Eye className="size-4" />
@@ -942,8 +1068,12 @@ function BookingList({
                           size="sm"
                           variant="default"
                           className="bg-primary text-primary-foreground hover:bg-primary/90"
-                          onClick={() => onOpen(r.id)}
+                          disabled={openingId === r.id}
+                          onClick={() => handleOpen(r.id)}
                         >
+                          {openingId === r.id ? (
+                            <Loader2 className="mr-1.5 size-3.5 animate-spin" />
+                          ) : null}
                           Open
                           <ChevronRight className="ml-1 size-3.5" />
                         </Button>
@@ -957,6 +1087,437 @@ function BookingList({
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/* ================================================================== */
+/* KPI Card                                                           */
+/* ================================================================== */
+
+function KpiCard({
+  label,
+  value,
+  icon: Icon,
+  tone,
+  hint,
+}: {
+  label: string;
+  value: string;
+  icon: any;
+  tone: "primary" | "gold" | "amber" | "emerald";
+  hint?: string;
+}) {
+  const toneClasses: Record<string, { ring: string; icon: string; value: string }> = {
+    primary: {
+      ring: "border-primary/20",
+      icon: "bg-primary/10 text-primary",
+      value: "text-primary",
+    },
+    gold: {
+      ring: "border-gold/30",
+      icon: "bg-gold/10 text-gold",
+      value: "text-gold",
+    },
+    amber: {
+      ring: "border-amber-200",
+      icon: "bg-amber-100 text-amber-700",
+      value: "text-amber-700",
+    },
+    emerald: {
+      ring: "border-emerald-200",
+      icon: "bg-emerald-100 text-emerald-700",
+      value: "text-emerald-700",
+    },
+  };
+  const t = toneClasses[tone];
+  return (
+    <Card className={cn("luxury-shadow overflow-hidden", t.ring)}>
+      <CardContent className="flex items-center gap-4 p-5">
+        <div className={cn("flex size-12 shrink-0 items-center justify-center rounded-xl", t.icon)}>
+          <Icon className="size-6" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {label}
+          </p>
+          <p
+            className={cn("mt-0.5 truncate font-mono text-2xl font-bold", t.value)}
+            style={{ fontFamily: "var(--font-display)" }}
+          >
+            {value}
+          </p>
+          {hint && <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ================================================================== */
+/* Booking Verification Dialog (eye button)                            */
+/* ================================================================== */
+
+function parseFraudSignals(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.filter((s) => typeof s === "string");
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+function fraudRisk(score: number): { level: string; tone: "rose" | "amber" | "emerald" } {
+  if (score >= 50) return { level: "High", tone: "rose" };
+  if (score >= 25) return { level: "Medium", tone: "amber" };
+  return { level: "Low", tone: "emerald" };
+}
+
+function fraudToneClasses(tone: "rose" | "amber" | "emerald") {
+  switch (tone) {
+    case "rose":
+      return {
+        badge: "bg-rose-100 text-rose-800 border-rose-200",
+        bar: "bg-rose-500",
+        text: "text-rose-700",
+        ring: "ring-rose-200",
+      };
+    case "amber":
+      return {
+        badge: "bg-amber-100 text-amber-800 border-amber-200",
+        bar: "bg-amber-500",
+        text: "text-amber-700",
+        ring: "ring-amber-200",
+      };
+    case "emerald":
+      return {
+        badge: "bg-emerald-100 text-emerald-800 border-emerald-200",
+        bar: "bg-emerald-500",
+        text: "text-emerald-700",
+        ring: "ring-emerald-200",
+      };
+  }
+}
+
+function ManualReviewBadge({ review }: { review: string }) {
+  if (review === "REAL") {
+    return (
+      <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">
+        <ShieldCheck className="mr-1 size-3" /> Verified Real
+      </Badge>
+    );
+  }
+  if (review === "SPAM") {
+    return (
+      <Badge className="bg-rose-100 text-rose-800 border-rose-200">
+        <ShieldX className="mr-1 size-3" /> Marked Spam
+      </Badge>
+    );
+  }
+  return (
+    <Badge className="bg-amber-100 text-amber-800 border-amber-200">
+      <ShieldAlert className="mr-1 size-3" /> Awaiting Review
+    </Badge>
+  );
+}
+
+function BookingVerificationDialog({
+  reservation,
+  onClose,
+  onViewFull,
+  onUpdated,
+}: {
+  reservation: ReservationListItemT;
+  onClose: () => void;
+  onViewFull: (id: string) => void;
+  onUpdated: (r: ReservationListItemT) => void;
+}) {
+  const [reviewing, setReviewing] = useState(false);
+  const score = reservation.fraudScore ?? 0;
+  const risk = fraudRisk(score);
+  const tones = fraudToneClasses(risk.tone);
+  const signals = parseFraudSignals(reservation.fraudSignals ?? "[]");
+  const isFlagged = Boolean(reservation.isFlagged);
+
+  async function setReview(value: "PENDING" | "REAL" | "SPAM") {
+    setReviewing(true);
+    try {
+      const res = await fetch(`/api/agency/reservations/${reservation.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          manualReview: value,
+          isFlagged: value === "SPAM" ? true : value === "REAL" ? false : reservation.isFlagged,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      toast.success(
+        value === "REAL"
+          ? "Marked as legitimate booking"
+          : value === "SPAM"
+            ? "Flagged as spam"
+            : "Review status reset",
+      );
+      // Merge updated fields into the list-item snapshot
+      onUpdated({
+        ...reservation,
+        manualReview: value,
+        isFlagged: value === "SPAM" ? true : value === "REAL" ? false : reservation.isFlagged,
+        ...(data.reservation ?? {}),
+      });
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to update review");
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <div className="flex items-start justify-between gap-3 pr-8">
+            <div>
+              <DialogTitle
+                className="flex items-center gap-2 text-xl"
+                style={{ fontFamily: "var(--font-display)" }}
+              >
+                <Fingerprint className="size-5 text-primary" />
+                Booking Verification
+              </DialogTitle>
+              <DialogDescription className="mt-1">
+                Quick inspection — confirm the booking is legitimate before opening it.
+                Does not change booking status.
+              </DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {/* Reference + customer */}
+          <div className="grid grid-cols-1 gap-3 rounded-lg border border-border bg-muted/30 p-4 sm:grid-cols-2">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Booking Reference
+              </p>
+              <p className="mt-0.5 font-mono text-base font-bold text-primary">
+                {reservation.reference}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Invoice #
+              </p>
+              <p className="mt-0.5 font-mono text-sm font-medium text-foreground">
+                {reservation.invoiceNumber}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Customer Name
+              </p>
+              <p className="mt-0.5 text-sm font-medium text-foreground">
+                {reservation.customerName}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Email
+              </p>
+              <p className="mt-0.5 truncate text-sm text-muted-foreground">
+                {reservation.customerEmail}
+              </p>
+            </div>
+            <div className="sm:col-span-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Phone
+              </p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {reservation.customerPhone ?? "—"}
+              </p>
+            </div>
+          </div>
+
+          {/* Fraud score panel */}
+          <div className={cn("rounded-lg border p-4 ring-1", tones.ring)}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Fraud Score
+                </p>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span
+                    className={cn("font-mono text-3xl font-bold", tones.text)}
+                    style={{ fontFamily: "var(--font-display)" }}
+                  >
+                    {score}
+                  </span>
+                  <span className="text-sm text-muted-foreground">/ 100</span>
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-2">
+                <Badge className={tones.badge} variant="outline">
+                  <AlertTriangle className="mr-1 size-3" />
+                  {risk.level} Risk
+                </Badge>
+                {isFlagged && (
+                  <Badge className="bg-rose-500 text-white border-rose-500">
+                    <span className="mr-1 inline-block size-1.5 rounded-full bg-white" />
+                    Flagged
+                  </Badge>
+                )}
+              </div>
+            </div>
+
+            {/* Score bar */}
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className={cn("h-full rounded-full transition-all", tones.bar)}
+                style={{ width: `${Math.min(100, Math.max(0, score))}%` }}
+              />
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Scores ≥ 50 are auto-flagged. ≥ 25 amber. &lt; 25 low risk.
+            </p>
+          </div>
+
+          {/* IP + user-agent */}
+          <div className="grid grid-cols-1 gap-3 rounded-lg border border-border p-4 sm:grid-cols-2">
+            <div>
+              <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <Globe className="size-3" /> IP Address
+              </p>
+              <p className="mt-0.5 font-mono text-sm text-foreground">
+                {reservation.ipAddress ?? "Not captured"}
+              </p>
+            </div>
+            <div>
+              <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <Fingerprint className="size-3" /> User-Agent
+              </p>
+              <p className="mt-0.5 max-h-12 overflow-y-auto break-all pr-1 font-mono text-[11px] text-muted-foreground">
+                {reservation.userAgent ?? "Not captured"}
+              </p>
+            </div>
+          </div>
+
+          {/* Fraud signals */}
+          <div className="rounded-lg border border-border p-4">
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <AlertCircle className="size-3" /> Fraud Signals ({signals.length})
+            </p>
+            {signals.length === 0 ? (
+              <p className="mt-2 text-sm text-muted-foreground">
+                No risk signals detected — booking looks clean.
+              </p>
+            ) : (
+              <ul className="mt-2 space-y-1.5">
+                {signals.map((s, i) => (
+                  <li
+                    key={`${s}-${i}`}
+                    className="flex items-start gap-2 text-sm text-foreground"
+                  >
+                    <span className="mt-1.5 inline-block size-1.5 shrink-0 rounded-full bg-amber-500" />
+                    <span>{s}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Booking summary */}
+          <div className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-muted/30 p-4 sm:grid-cols-4">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Status
+              </p>
+              <div className="mt-1"><StatusBadge status={reservation.bookingStatus} /></div>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Activity
+              </p>
+              <p className="mt-0.5 truncate text-sm font-medium text-foreground">
+                {reservation.firstServiceName ?? "—"}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Total
+              </p>
+              <p className="mt-0.5 font-mono text-sm font-bold text-foreground">
+                {money(reservation.currency, reservation.totalAmount)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Paid
+              </p>
+              <p className="mt-0.5 font-mono text-sm font-semibold text-emerald-700">
+                {money(reservation.currency, reservation.amountPaid)}
+              </p>
+            </div>
+          </div>
+
+          {/* Manual review */}
+          <div className="rounded-lg border border-border p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Manual Review
+                </p>
+                <div className="mt-1">
+                  <ManualReviewBadge review={reservation.manualReview ?? "PENDING"} />
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={reviewing || reservation.manualReview === "REAL"}
+                  onClick={() => setReview("REAL")}
+                  className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                >
+                  {reviewing ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <ShieldCheck className="mr-1 size-3.5" />}
+                  Real
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={reviewing || reservation.manualReview === "SPAM"}
+                  onClick={() => setReview("SPAM")}
+                  className="border-rose-300 text-rose-700 hover:bg-rose-50"
+                >
+                  {reviewing ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <ShieldX className="mr-1 size-3.5" />}
+                  Spam
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={reviewing || reservation.manualReview === "PENDING"}
+                  onClick={() => setReview("PENDING")}
+                >
+                  {reviewing ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : <RefreshCw className="mr-1 size-3.5" />}
+                  Reset
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button variant="outline" onClick={onClose}>Close</Button>
+          <Button
+            onClick={() => onViewFull(reservation.id)}
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            View Full Booking
+            <ArrowUpRight className="ml-1.5 size-4" />
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

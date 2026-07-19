@@ -17,6 +17,60 @@ function genInvoice(): string {
   return `WL-INV-${n}`;
 }
 
+// Generate plausible fraud detection data for a new reservation.
+// This mirrors what the website Booking model captures at checkout.
+function genFraudData() {
+  const ip = `${Math.floor(Math.random() * 223 + 1)}.${Math.floor(
+    Math.random() * 256,
+  )}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 254 + 1)}`;
+
+  const userAgents = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile Safari/604.1",
+    "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Mobile Safari/537.36",
+  ];
+
+  // Pool of fraud signals — pick 0-3 weighted toward low scores
+  const allSignals = [
+    "Email domain age < 7 days",
+    "IP geolocation mismatch with billing country",
+    "Multiple booking attempts in 1 hour",
+    "Disposable email provider",
+    "VPN / proxy detected",
+    "Card BIN country mismatch",
+    "High-risk ASN (hosting provider)",
+    "Phone country code mismatch",
+    "Velocity rule triggered",
+    "Address mismatch (AVS)",
+  ];
+
+  // Score distribution: 60% low (<25), 25% medium (25-49), 15% high (50+)
+  const roll = Math.random();
+  let score: number;
+  if (roll < 0.6) score = Math.floor(Math.random() * 25);
+  else if (roll < 0.85) score = 25 + Math.floor(Math.random() * 25);
+  else score = 50 + Math.floor(Math.random() * 45);
+
+  // More signals = higher score
+  const signalCount = score < 25 ? Math.floor(Math.random() * 2) : score < 50 ? 1 + Math.floor(Math.random() * 2) : 2 + Math.floor(Math.random() * 3);
+  const signals: string[] = [];
+  const pool = [...allSignals];
+  for (let i = 0; i < signalCount && pool.length > 0; i++) {
+    const idx = Math.floor(Math.random() * pool.length);
+    signals.push(pool.splice(idx, 1)[0]);
+  }
+
+  return {
+    ipAddress: ip,
+    userAgent: userAgents[Math.floor(Math.random() * userAgents.length)],
+    fraudScore: score,
+    fraudSignals: JSON.stringify(signals),
+    isFlagged: score >= 50,
+    manualReview: "PENDING" as const,
+  };
+}
+
 // GET /api/agency/reservations — list with filters
 export async function GET(req: NextRequest) {
   if (!(await isAdminAuthed())) {
@@ -119,6 +173,7 @@ export async function POST(req: NextRequest) {
         currency: String(body.currency ?? "AED"),
         remarks: body.remarks ? String(body.remarks) : null,
         termsAccepted: Boolean(body.termsAccepted ?? false),
+        ...genFraudData(),
       },
       include: {
         tours: true,

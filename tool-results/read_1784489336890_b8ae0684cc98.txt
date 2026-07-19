@@ -1,0 +1,2002 @@
+     1→"use client";
+     2→
+     3→/**
+     4→ * Wanderlust — Agency Booking System Dashboard (Rayna Tours / JTR Holidays style)
+     5→ *
+     6→ * B2B travel agency management UI. The screen has exactly two views:
+     7→ *
+     8→ *   View 1 — Booking List: a dense table of reservations with search +
+     9→ *             status filter + "New Booking" CTA. Each row has an eye (View)
+    10→ *             and an "Open" CTA that both open the reservation detail.
+    11→ *
+    12→ *   View 2 — Reservation Detail: ONE scrollable page (not a wizard, not
+    13→ *             multi-step tabs that switch pages) with three inline sections:
+    14→ *               A. Reservation Details (grid of fields + Save Record)
+    15→ *               B. Guests Table (inline editable rows + Save Record(s))
+    16→ *               C. Service Tabs (horizontal tab bar with inline forms)
+    17→ *
+    18→ * Tours / Transport / Hotels / Payments tabs all render their form inline
+    19→ * (no dialogs, no page switches). Visas / Flights / Extras show a styled
+    20→ * "Coming soon" placeholder.
+    21→ *
+    22→ * All API calls go through /api/agency/* (isAdminAuthed-guarded) and
+    23→ * /api/experiences (public catalog) + /api/agency/employees + /api/agency/suppliers.
+    24→ */
+    25→
+    26→import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+    27→import { format, parseISO } from "date-fns";
+    28→import { toast } from "sonner";
+    29→import {
+    30→  AlertCircle,
+    31→  ArrowLeft,
+    32→  Banknote,
+    33→  Briefcase,
+    34→  Building2,
+    35→  CalendarDays,
+    36→  Check,
+    37→  CheckCircle2,
+    38→  ChevronRight,
+    39→  CreditCard,
+    40→  Eye,
+    41→  Home as HomeIcon,
+    42→  Hotel as HotelIcon,
+    43→  Info,
+    44→  Loader2,
+    45→  MapPin,
+    46→  Minus,
+    47→  Pencil,
+    48→  Phone,
+    49→  Plane,
+    50→  Plus,
+    51→  RefreshCw,
+    52→  Save,
+    53→  Search,
+    54→  Settings,
+    55→  ShieldCheck,
+    56→  Sparkles,
+    57→  Sticker,
+    58→  Trash2,
+    59→  User,
+    60→  UserPlus,
+    61→  Users,
+    62→  X,
+    63→} from "lucide-react";
+    64→
+    65→import type {
+    66→  EmployeeT,
+    67→  GuestT,
+    68→  HotelBookingT,
+    69→  PaymentT,
+    70→  ReservationListItemT,
+    71→  ReservationT,
+    72→  SupplierT,
+    73→  TourBookingT,
+    74→  TransportBookingT,
+    75→} from "@/lib/agency-types";
+    76→import { calcHotelPricing, calcTourPricing } from "@/lib/agency-types";
+    77→import { cn } from "@/lib/utils";
+    78→
+    79→import {
+    80→  AlertDialog,
+    81→  AlertDialogAction,
+    82→  AlertDialogCancel,
+    83→  AlertDialogContent,
+    84→  AlertDialogDescription,
+    85→  AlertDialogFooter,
+    86→  AlertDialogHeader,
+    87→  AlertDialogTitle,
+    88→} from "@/components/ui/alert-dialog";
+    89→import { Badge } from "@/components/ui/badge";
+    90→import { Button } from "@/components/ui/button";
+    91→import {
+    92→  Card,
+    93→  CardContent,
+    94→  CardHeader,
+    95→  CardTitle,
+    96→} from "@/components/ui/card";
+    97→import {
+    98→  Dialog,
+    99→  DialogContent,
+   100→  DialogDescription,
+   101→  DialogFooter,
+   102→  DialogHeader,
+   103→  DialogTitle,
+   104→} from "@/components/ui/dialog";
+   105→import { Input } from "@/components/ui/input";
+   106→import { Label } from "@/components/ui/label";
+   107→import {
+   108→  Select,
+   109→  SelectContent,
+   110→  SelectItem,
+   111→  SelectTrigger,
+   112→  SelectValue,
+   113→} from "@/components/ui/select";
+   114→import { Separator } from "@/components/ui/separator";
+   115→import { Skeleton } from "@/components/ui/skeleton";
+   116→import { Switch } from "@/components/ui/switch";
+   117→import {
+   118→  Table,
+   119→  TableBody,
+   120→  TableCell,
+   121→  TableHead,
+   122→  TableHeader,
+   123→  TableRow,
+   124→} from "@/components/ui/table";
+   125→import { Textarea } from "@/components/ui/textarea";
+   126→
+   127→/* ================================================================== */
+   128→/* Constants                                                          */
+   129→/* ================================================================== */
+   130→
+   131→const BOOKING_STATUSES: { value: string; label: string; badgeClass: string }[] = [
+   132→  { value: "PENDING", label: "In Process", badgeClass: "bg-amber-100 text-amber-800 border-amber-200" },
+   133→  { value: "SUPPLIER_PENDING", label: "Supplier Confirmation Pending", badgeClass: "bg-orange-100 text-orange-800 border-orange-200" },
+   134→  { value: "SUPPLIER_CONFIRMED", label: "Supplier Confirmed", badgeClass: "bg-sky-100 text-sky-800 border-sky-200" },
+   135→  { value: "CUSTOMER_CONFIRMED", label: "Customer Confirmed", badgeClass: "bg-teal-100 text-teal-800 border-teal-200" },
+   136→  { value: "COMPLETED", label: "Completed", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-200" },
+   137→  { value: "CANCELLED", label: "Cancelled", badgeClass: "bg-rose-100 text-rose-800 border-rose-200" },
+   138→];
+   139→
+   140→const SERVICE_STATUSES = [
+   141→  { value: "INITIATED", label: "Initiated" },
+   142→  { value: "SUPPLIER_CONFIRMED", label: "Supplier Confirmed" },
+   143→  { value: "CUSTOMER_CONFIRMED", label: "Customer Confirmed" },
+   144→  { value: "CONFIRMED", label: "Confirmed" },
+   145→  { value: "CANCELLED", label: "Cancelled" },
+   146→];
+   147→
+   148→const CAR_TYPES = [
+   149→  { value: "SEDAN", label: "Sedan" },
+   150→  { value: "SUV", label: "SUV" },
+   151→  { value: "MINIVAN", label: "Minivan" },
+   152→  { value: "VAN", label: "Van" },
+   153→  { value: "LUXURY", label: "Luxury" },
+   154→  { value: "COACH", label: "Coach" },
+   155→];
+   156→
+   157→const TRANSPORT_TYPES = [
+   158→  { value: "ARRIVAL", label: "Arrival" },
+   159→  { value: "DEPARTURE", label: "Departure" },
+   160→  { value: "INTERCITY", label: "Intercity" },
+   161→  { value: "HOURLY", label: "Hourly" },
+   162→];
+   163→
+   164→const TRANSFER_OPTIONS = [
+   165→  { value: "WITHOUT_TRANSFER", label: "Without Transfer" },
+   166→  { value: "SHARED", label: "Shared Transfer" },
+   167→  { value: "PRIVATE", label: "Private Transfer" },
+   168→];
+   169→
+   170→const MEAL_PLANS = [
+   171→  { value: "BB", label: "Bed & Breakfast (BB)" },
+   172→  { value: "HB", label: "Half Board (HB)" },
+   173→  { value: "FB", label: "Full Board (FB)" },
+   174→  { value: "AI", label: "All Inclusive (AI)" },
+   175→];
+   176→
+   177→const COST_UNITS = [
+   178→  { value: "PER_PERSON", label: "Per Person" },
+   179→  { value: "PER_BOOKING", label: "Per Booking" },
+   180→];
+   181→
+   182→const PAYMENT_METHODS = [
+   183→  { value: "CASH", label: "Cash" },
+   184→  { value: "CARD", label: "Card" },
+   185→  { value: "BANK_TRANSFER", label: "Bank Transfer" },
+   186→  { value: "WHATSAPP", label: "WhatsApp" },
+   187→  { value: "ONLINE", label: "Online" },
+   188→];
+   189→
+   190→const PAYMENT_STATUSES = [
+   191→  { value: "RECEIVED", label: "Received" },
+   192→  { value: "PENDING", label: "Pending" },
+   193→  { value: "REFUNDED", label: "Refunded" },
+   194→];
+   195→
+   196→const INVOICE_TYPES = [
+   197→  { value: "TAXABLE", label: "Taxable Invoice 5%" },
+   198→  { value: "ZERO_RATED", label: "Zero Rated" },
+   199→  { value: "EXEMPT", label: "Exempt" },
+   200→];
+   201→
+   202→const GUEST_TITLES = ["Mr", "Mrs", "Miss", "Master", "Dr"];
+   203→const PAX_TYPES = [
+   204→  { value: "ADULT", label: "Adult" },
+   205→  { value: "CHILD", label: "Child" },
+   206→  { value: "INFANT", label: "Infant" },
+   207→];
+   208→
+   209→const SUPPLIER_TYPES = [
+   210→  { value: "TOUR", label: "Tour" },
+   211→  { value: "HOTEL", label: "Hotel" },
+   212→  { value: "TRANSPORT", label: "Transport" },
+   213→  { value: "VISA", label: "Visa" },
+   214→  { value: "FLIGHT", label: "Flight" },
+   215→];
+   216→
+   217→const YES_NO = [
+   218→  { value: "YES", label: "Yes" },
+   219→  { value: "NO", label: "No" },
+   220→];
+   221→
+   222→const COUNTRIES = [
+   223→  "United Arab Emirates", "Saudi Arabia", "Qatar", "Kuwait", "Bahrain", "Oman",
+   224→  "India", "Pakistan", "Bangladesh", "Sri Lanka", "Nepal", "China", "Japan",
+   225→  "Singapore", "Malaysia", "Thailand", "Indonesia", "Philippines", "Vietnam",
+   226→  "United Kingdom", "United States", "Canada", "Australia", "New Zealand",
+   227→  "Germany", "France", "Italy", "Spain", "Netherlands", "Switzerland",
+   228→  "Russia", "Turkey", "Egypt", "South Africa", "Nigeria", "Kenya",
+   229→  "Brazil", "Argentina", "Mexico", "Other",
+   230→];
+   231→
+   232→const SERVICE_TABS = [
+   233→  { id: "home", label: "Home", icon: HomeIcon },
+   234→  { id: "hotels", label: "Hotels", icon: HotelIcon },
+   235→  { id: "tours", label: "Tours", icon: MapPin },
+   236→  { id: "visas", label: "Visas", icon: Sticker },
+   237→  { id: "flights", label: "Flights", icon: Plane },
+   238→  { id: "transport", label: "Transport", icon: CreditCard },
+   239→  { id: "extras", label: "Extras", icon: Sparkles },
+   240→  { id: "payments", label: "Payments", icon: Banknote },
+   241→] as const;
+   242→
+   243→type ServiceTabId = (typeof SERVICE_TABS)[number]["id"];
+   244→
+   245→/* ================================================================== */
+   246→/* Helpers                                                            */
+   247→/* ================================================================== */
+   248→
+   249→function statusLabel(status: string): string {
+   250→  return BOOKING_STATUSES.find((s) => s.value === status)?.label ?? status;
+   251→}
+   252→function statusBadgeClass(status: string): string {
+   253→  return (
+   254→    BOOKING_STATUSES.find((s) => s.value === status)?.badgeClass ??
+   255→    "bg-muted text-muted-foreground border-border"
+   256→  );
+   257→}
+   258→function money(cur: string, value: number): string {
+   259→  const c = cur || "AED";
+   260→  const v = Number.isFinite(value) ? value : 0;
+   261→  return `${c} ${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+   262→}
+   263→function fmtDate(iso?: string | null, fmtStr = "MMM d, yyyy"): string {
+   264→  if (!iso) return "—";
+   265→  try {
+   266→    return format(parseISO(iso), fmtStr);
+   267→  } catch {
+   268→    return "—";
+   269→  }
+   270→}
+   271→function fmtDateTime(iso?: string | null): string {
+   272→  return fmtDate(iso, "MMM d, yyyy · h:mm a");
+   273→}
+   274→function toInputDate(iso?: string | null): string {
+   275→  if (!iso) return "";
+   276→  try {
+   277→    return format(parseISO(iso), "yyyy-MM-dd");
+   278→  } catch {
+   279→    return "";
+   280→  }
+   281→}
+   282→function toInputDateTime(iso?: string | null): string {
+   283→  if (!iso) return "";
+   284→  try {
+   285→    return format(parseISO(iso), "yyyy-MM-dd'T'HH:mm");
+   286→  } catch {
+   287→    return "";
+   288→  }
+   289→}
+   290→function num(v: unknown): number {
+   291→  const n = typeof v === "number" ? v : parseFloat(String(v ?? "0"));
+   292→  return Number.isFinite(n) ? n : 0;
+   293→}
+   294→function statusMetaFromList<T extends { value: string; label: string }>(
+   295→  list: T[],
+   296→  value: string,
+   297→): T | undefined {
+   298→  return list.find((s) => s.value === value);
+   299→}
+   300→
+   301→/* ================================================================== */
+   302→/* Small UI atoms                                                    */
+   303→/* ================================================================== */
+   304→
+   305→function StatusBadge({ status }: { status: string }) {
+   306→  return (
+   307→    <Badge
+   308→      variant="outline"
+   309→      className={cn("whitespace-nowrap font-medium", statusBadgeClass(status))}
+   310→    >
+   311→      {statusLabel(status)}
+   312→    </Badge>
+   313→  );
+   314→}
+   315→
+   316→function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
+   317→  return (
+   318→    <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-rose-200 bg-rose-50 p-8 text-center">
+   319→      <AlertCircle className="size-8 text-rose-500" />
+   320→      <p className="text-sm font-medium text-rose-700">{message}</p>
+   321→      {onRetry && (
+   322→        <Button size="sm" variant="outline" onClick={onRetry}>
+   323→          <RefreshCw className="mr-1.5 size-3.5" />
+   324→          Try again
+   325→        </Button>
+   326→      )}
+   327→    </div>
+   328→  );
+   329→}
+   330→
+   331→function SectionTitle({
+   332→  step,
+   333→  title,
+   334→  subtitle,
+   335→  right,
+   336→}: {
+   337→  step?: string;
+   338→  title: string;
+   339→  subtitle?: string;
+   340→  right?: React.ReactNode;
+   341→}) {
+   342→  return (
+   343→    <div className="flex items-start justify-between gap-3 border-b border-border pb-3">
+   344→      <div className="flex items-start gap-3">
+   345→        {step && (
+   346→          <span className="mt-0.5 flex size-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+   347→            {step}
+   348→          </span>
+   349→        )}
+   350→        <div>
+   351→          <h3
+   352→            className="text-lg font-semibold tracking-tight text-foreground"
+   353→            style={{ fontFamily: "var(--font-display)" }}
+   354→          >
+   355→            {title}
+   356→          </h3>
+   357→          {subtitle && (
+   358→            <p className="text-xs text-muted-foreground">{subtitle}</p>
+   359→          )}
+   360→        </div>
+   361→      </div>
+   362→      {right}
+   363→    </div>
+   364→  );
+   365→}
+   366→
+   367→function Field({
+   368→  label,
+   369→  required,
+   370→  hint,
+   371→  children,
+   372→  className,
+   373→}: {
+   374→  label: string;
+   375→  required?: boolean;
+   376→  hint?: string;
+   377→  children: React.ReactNode;
+   378→  className?: string;
+   379→}) {
+   380→  return (
+   381→    <div className={cn("flex flex-col gap-1.5", className)}>
+   382→      <label className="text-xs font-semibold text-foreground">
+   383→        {label}
+   384→        {required && <span className="ml-0.5 text-rose-500">*</span>}
+   385→      </label>
+   386→      {children}
+   387→      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+   388→    </div>
+   389→  );
+   390→}
+   391→
+   392→function LoadingBlock({ rows = 4 }: { rows?: number }) {
+   393→  return (
+   394→    <div className="space-y-2">
+   395→      {Array.from({ length: rows }).map((_, i) => (
+   396→        <Skeleton key={i} className="h-12 w-full" />
+   397→      ))}
+   398→    </div>
+   399→  );
+   400→}
+   401→
+   402→/* ================================================================== */
+   403→/* Reusable API hooks                                                */
+   404→/* ================================================================== */
+   405→
+   406→function useEmployees() {
+   407→  const [employees, setEmployees] = useState<EmployeeT[]>([]);
+   408→  const [loading, setLoading] = useState(true);
+   409→  const load = useCallback(async () => {
+   410→    setLoading(true);
+   411→    try {
+   412→      const res = await fetch("/api/agency/employees?active=1");
+   413→      if (!res.ok) throw new Error("Failed to load employees");
+   414→      const data = await res.json();
+   415→      setEmployees(data.employees ?? []);
+   416→    } catch (e) {
+   417→      console.error(e);
+   418→    } finally {
+   419→      setLoading(false);
+   420→    }
+   421→  }, []);
+   422→  useEffect(() => {
+   423→    load();
+   424→  }, [load]);
+   425→  return { employees, loading, reload: load };
+   426→}
+   427→
+   428→function useSuppliers(type?: string) {
+   429→  const [suppliers, setSuppliers] = useState<SupplierT[]>([]);
+   430→  const [loading, setLoading] = useState(true);
+   431→  const load = useCallback(async () => {
+   432→    setLoading(true);
+   433→    try {
+   434→      const params = new URLSearchParams();
+   435→      if (type) params.set("type", type);
+   436→      params.set("active", "1");
+   437→      const res = await fetch(`/api/agency/suppliers?${params.toString()}`);
+   438→      if (!res.ok) throw new Error("Failed to load suppliers");
+   439→      const data = await res.json();
+   440→      setSuppliers(data.suppliers ?? []);
+   441→    } catch (e) {
+   442→      console.error(e);
+   443→    } finally {
+   444→      setLoading(false);
+   445→    }
+   446→  }, [type]);
+   447→  useEffect(() => {
+   448→    load();
+   449→  }, [load]);
+   450→  return { suppliers, loading, reload: load };
+   451→}
+   452→
+   453→interface ExperienceOption {
+   454→  id: string;
+   455→  title: string;
+   456→  type: string;
+   457→  price: number;
+   458→  currency: string;
+   459→}
+   460→
+   461→function useExperiences() {
+   462→  const [experiences, setExperiences] = useState<ExperienceOption[]>([]);
+   463→  const [loading, setLoading] = useState(true);
+   464→  const load = useCallback(async () => {
+   465→    setLoading(true);
+   466→    try {
+   467→      const res = await fetch("/api/experiences?limit=200");
+   468→      if (!res.ok) throw new Error("Failed to load experiences");
+   469→      const data = await res.json();
+   470→      setExperiences(
+   471→        (data.experiences ?? []).map((e: any) => ({
+   472→          id: e.id,
+   473→          title: e.title,
+   474→          type: e.type,
+   475→          price: e.price,
+   476→          currency: e.currency,
+   477→        })),
+   478→      );
+   479→    } catch (e) {
+   480→      console.error(e);
+   481→    } finally {
+   482→      setLoading(false);
+   483→    }
+   484→  }, []);
+   485→  useEffect(() => {
+   486→    load();
+   487→  }, [load]);
+   488→  return { experiences, loading, reload: load };
+   489→}
+   490→
+   491→interface HotelOption {
+   492→  id: string;
+   493→  name: string;
+   494→  pricePerNight: number;
+   495→  currency: string;
+   496→}
+   497→
+   498→function useHotelsCatalog() {
+   499→  const [hotels, setHotels] = useState<HotelOption[]>([]);
+   500→  const [loading, setLoading] = useState(true);
+   501→  const load = useCallback(async () => {
+   502→    setLoading(true);
+   503→    try {
+   504→      const res = await fetch("/api/hotels?limit=200");
+   505→      if (!res.ok) throw new Error("Failed to load hotels");
+   506→      const data = await res.json();
+   507→      setHotels(
+   508→        (data.hotels ?? []).map((h: any) => ({
+   509→          id: h.id,
+   510→          name: h.name,
+   511→          pricePerNight: h.pricePerNight,
+   512→          currency: h.currency,
+   513→        })),
+   514→      );
+   515→    } catch (e) {
+   516→      console.error(e);
+   517→    } finally {
+   518→      setLoading(false);
+   519→    }
+   520→  }, []);
+   521→  useEffect(() => {
+   522→    load();
+   523→  }, [load]);
+   524→  return { hotels, loading, reload: load };
+   525→}
+   526→
+   527→/* ================================================================== */
+   528→/* Add-supplier inline dialog (used by Tours/Transport/Hotels forms) */
+   529→/* ================================================================== */
+   530→
+   531→function SupplierAddDialog({
+   532→  open,
+   533→  onClose,
+   534→  onCreated,
+   535→  defaultType,
+   536→}: {
+   537→  open: boolean;
+   538→  onClose: () => void;
+   539→  onCreated: (s: SupplierT) => void;
+   540→  defaultType: string;
+   541→}) {
+   542→  const [form, setForm] = useState({
+   543→    name: "",
+   544→    type: defaultType,
+   545→    contactPerson: "",
+   546→    email: "",
+   547→    phone: "",
+   548→    whatsapp: "",
+   549→    city: "",
+   550→    country: "",
+   551→    paymentTerms: "",
+   552→    markupValue: "20",
+   553→  });
+   554→  const [saving, setSaving] = useState(false);
+   555→
+   556→  useEffect(() => {
+   557→    if (open) {
+   558→      setForm((f) => ({ ...f, type: defaultType, name: "", contactPerson: "", email: "", phone: "", whatsapp: "", city: "", country: "", paymentTerms: "", markupValue: "20" }));
+   559→    }
+   560→  }, [open, defaultType]);
+   561→
+   562→  async function submit() {
+   563→    if (!form.name.trim()) {
+   564→      toast.error("Supplier name is required");
+   565→      return;
+   566→    }
+   567→    setSaving(true);
+   568→    try {
+   569→      const res = await fetch("/api/agency/suppliers", {
+   570→        method: "POST",
+   571→        headers: { "Content-Type": "application/json" },
+   572→        body: JSON.stringify(form),
+   573→      });
+   574→      const data = await res.json();
+   575→      if (!res.ok) throw new Error(data.error ?? "Failed");
+   576→      toast.success("Supplier added");
+   577→      onCreated(data.supplier);
+   578→      onClose();
+   579→    } catch (e: any) {
+   580→      toast.error(e.message ?? "Failed to add supplier");
+   581→    } finally {
+   582→      setSaving(false);
+   583→    }
+   584→  }
+   585→
+   586→  return (
+   587→    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+   588→      <DialogContent className="max-w-2xl">
+   589→        <DialogHeader>
+   590→          <DialogTitle style={{ fontFamily: "var(--font-display)" }}>
+   591→            Add New Supplier
+   592→          </DialogTitle>
+   593→          <DialogDescription>
+   594→            Create a supplier record. They will appear in the supplier dropdown once saved.
+   595→          </DialogDescription>
+   596→        </DialogHeader>
+   597→
+   598→        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+   599→          <Field label="Supplier Name" required>
+   600→            <Input
+   601→              value={form.name}
+   602→              onChange={(e) => setForm({ ...form, name: e.target.value })}
+   603→              placeholder="e.g. Arabian Adventures"
+   604→            />
+   605→          </Field>
+   606→          <Field label="Type">
+   607→            <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
+   608→              <SelectTrigger><SelectValue /></SelectTrigger>
+   609→              <SelectContent>
+   610→                {SUPPLIER_TYPES.map((t) => (
+   611→                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+   612→                ))}
+   613→              </SelectContent>
+   614→            </Select>
+   615→          </Field>
+   616→          <Field label="Contact Person">
+   617→            <Input value={form.contactPerson} onChange={(e) => setForm({ ...form, contactPerson: e.target.value })} />
+   618→          </Field>
+   619→          <Field label="Email">
+   620→            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+   621→          </Field>
+   622→          <Field label="Phone">
+   623→            <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+   624→          </Field>
+   625→          <Field label="WhatsApp">
+   626→            <Input value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: e.target.value })} />
+   627→          </Field>
+   628→          <Field label="City">
+   629→            <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
+   630→          </Field>
+   631→          <Field label="Country">
+   632→            <Select value={form.country} onValueChange={(v) => setForm({ ...form, country: v })}>
+   633→              <SelectTrigger><SelectValue placeholder="Select country" /></SelectTrigger>
+   634→              <SelectContent>
+   635→                {COUNTRIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+   636→              </SelectContent>
+   637→            </Select>
+   638→          </Field>
+   639→          <Field label="Payment Terms">
+   640→            <Input value={form.paymentTerms} onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })} placeholder="e.g. 30 days credit" />
+   641→          </Field>
+   642→          <Field label="Default Markup %">
+   643→            <Input type="number" value={form.markupValue} onChange={(e) => setForm({ ...form, markupValue: e.target.value })} />
+   644→          </Field>
+   645→        </div>
+   646→
+   647→        <DialogFooter>
+   648→          <Button variant="outline" onClick={onClose}>Cancel</Button>
+   649→          <Button onClick={submit} disabled={saving} className="bg-primary text-primary-foreground hover:bg-primary/90">
+   650→            {saving ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Plus className="mr-1.5 size-4" />}
+   651→            Add Supplier
+   652→          </Button>
+   653→        </DialogFooter>
+   654→      </DialogContent>
+   655→    </Dialog>
+   656→  );
+   657→}
+   658→
+   659→/* Field-level "+" button that opens the SupplierAddDialog */
+   660→function AddSupplierButton({
+   661→  defaultType,
+   662→  onCreated,
+   663→}: {
+   664→  defaultType: string;
+   665→  onCreated: (s: SupplierT) => void;
+   666→}) {
+   667→  const [open, setOpen] = useState(false);
+   668→  return (
+   669→    <>
+   670→      <Button
+   671→        type="button"
+   672→        size="icon"
+   673→        variant="outline"
+   674→        className="size-9 shrink-0 border-primary/30 text-primary hover:bg-primary/5"
+   675→        onClick={() => setOpen(true)}
+   676→        title="Add new supplier"
+   677→      >
+   678→        <Plus className="size-4" />
+   679→      </Button>
+   680→      <SupplierAddDialog
+   681→        open={open}
+   682→        onClose={() => setOpen(false)}
+   683→        onCreated={onCreated}
+   684→        defaultType={defaultType}
+   685→      />
+   686→    </>
+   687→  );
+   688→}
+   689→
+   690→/* ================================================================== */
+   691→/* Main export                                                        */
+   692→/* ================================================================== */
+   693→
+   694→export function AgencyDashboard({ onExit }: { onExit?: () => void }) {
+   695→  const [activeReservationId, setActiveReservationId] = useState<string | null>(null);
+   696→  const [listKey, setListKey] = useState(0);
+   697→
+   698→  const handleOpen = (id: string) => setActiveReservationId(id);
+   699→  const handleBack = () => {
+   700→    setActiveReservationId(null);
+   701→    setListKey((k) => k + 1); // refresh list after edits
+   702→  };
+   703→
+   704→  if (activeReservationId) {
+   705→    return (
+   706→      <ReservationDetail
+   707→        reservationId={activeReservationId}
+   708→        onBack={handleBack}
+   709→        onExit={onExit}
+   710→      />
+   711→    );
+   712→  }
+   713→  const handleView = (id: string) => {
+   714→    // Eye button: same as Open — opens the detail page
+   715→    setActiveReservationId(id);
+   716→  };
+   717→
+   718→  if (activeReservationId) {
+   719→    return (
+   720→      <ReservationDetail
+   721→        reservationId={activeReservationId}
+   722→        onBack={handleBack}
+   723→        onExit={onExit}
+   724→      />
+   725→    );
+   726→  }
+   727→  return <BookingList onOpen={handleOpen} onView={handleView} onExit={onExit} refreshKey={listKey} />;
+   728→}
+   729→
+   730→/* ================================================================== */
+   731→/* View 1 — Booking List                                             */
+   732→/* ================================================================== */
+   733→
+   734→function BookingList({
+   735→  onOpen,
+   736→  onExit,
+   737→  onView,
+   738→  refreshKey,
+   739→}: {
+   740→  onOpen: (id: string) => void;
+   741→  onView: (id: string) => void;
+   742→  onExit?: () => void;
+   743→  refreshKey: number;
+   744→}) {
+   745→  const [search, setSearch] = useState("");
+   746→  const [status, setStatus] = useState("ALL");
+   747→  const [items, setItems] = useState<ReservationListItemT[]>([]);
+   748→  const [loading, setLoading] = useState(true);
+   749→  const [error, setError] = useState<string | null>(null);
+   750→
+   751→  const load = useCallback(async () => {
+   752→    setLoading(true);
+   753→    setError(null);
+   754→    try {
+   755→      const params = new URLSearchParams();
+   756→      if (search.trim()) params.set("search", search.trim());
+   757→      if (status && status !== "ALL") params.set("status", status);
+   758→      const res = await fetch(`/api/agency/reservations?${params.toString()}`);
+   759→      if (!res.ok) throw new Error("Failed to load reservations");
+   760→      const data = await res.json();
+   761→      setItems(data.reservations ?? []);
+   762→    } catch (e: any) {
+   763→      setError(e.message ?? "Failed to load reservations");
+   764→    } finally {
+   765→      setLoading(false);
+   766→    }
+   767→  }, [search, status]);
+   768→
+   769→  useEffect(() => {
+   770→    const t = setTimeout(load, 250);
+   771→    return () => clearTimeout(t);
+   772→  }, [load, refreshKey]);
+   773→
+   774→  async function handleNewBooking() {
+   775→    try {
+   776→      const res = await fetch("/api/agency/reservations", {
+   777→        method: "POST",
+   778→        headers: { "Content-Type": "application/json" },
+   779→        body: JSON.stringify({
+   780→          customerName: "New Customer",
+   781→          customerEmail: `customer-${Date.now()}@wanderlust.travel`,
+   782→          bookingStatus: "PENDING",
+   783→          invoiceType: "TAXABLE",
+   784→          termsAccepted: true,
+   785→        }),
+   786→      });
+   787→      const data = await res.json();
+   788→      if (!res.ok) throw new Error(data.error ?? "Failed");
+   789→      toast.success("New reservation created");
+   790→      onOpen(data.reservation.id);
+   791→    } catch (e: any) {
+   792→      toast.error(e.message ?? "Failed to create reservation");
+   793→    }
+   794→  }
+   795→
+   796→  return (
+   797→    <div className="flex flex-col gap-5">
+   798→      {/* Page header */}
+   799→      <div className="flex flex-wrap items-end justify-between gap-3">
+   800→        <div>
+   801→          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+   802→            <Briefcase className="size-3.5 text-gold" />
+   803→            Agency Console
+   804→          </div>
+   805→          <h2
+   806→            className="mt-1 text-2xl font-bold tracking-tight text-foreground sm:text-3xl"
+   807→            style={{ fontFamily: "var(--font-display)" }}
+   808→          >
+   809→            Reservations
+   810→          </h2>
+   811→          <p className="text-sm text-muted-foreground">
+   812→            {loading
+   813→              ? "Loading reservations…"
+   814→              : `${items.length} reservation${items.length === 1 ? "" : "s"} found`}
+   815→          </p>
+   816→        </div>
+   817→        <div className="flex items-center gap-2">
+   818→          <Button variant="outline" size="sm" onClick={() => load()}>
+   819→            <RefreshCw className="mr-1.5 size-3.5" />
+   820→            Refresh
+   821→          </Button>
+   822→          {onExit && (
+   823→            <Button variant="ghost" size="sm" onClick={onExit}>
+   824→              <ArrowLeft className="mr-1.5 size-3.5" />
+   825→              Exit
+   826→            </Button>
+   827→          )}
+   828→          <Button onClick={handleNewBooking} className="bg-primary text-primary-foreground hover:bg-primary/90">
+   829→            <Plus className="mr-1.5 size-4" />
+   830→            New Booking
+   831→          </Button>
+   832→        </div>
+   833→      </div>
+   834→
+   835→      {/* Filter bar */}
+   836→      <Card className="luxury-shadow">
+   837→        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+   838→          <div className="relative flex-1">
+   839→            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+   840→            <Input
+   841→              placeholder="Search by reference, customer name, email or phone…"
+   842→              value={search}
+   843→              onChange={(e) => setSearch(e.target.value)}
+   844→              className="pl-9"
+   845→            />
+   846→          </div>
+   847→          <div className="w-full sm:w-64">
+   848→            <Select value={status} onValueChange={setStatus}>
+   849→              <SelectTrigger><SelectValue placeholder="All statuses" /></SelectTrigger>
+   850→              <SelectContent>
+   851→                <SelectItem value="ALL">All statuses</SelectItem>
+   852→                {BOOKING_STATUSES.map((s) => (
+   853→                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+   854→                ))}
+   855→              </SelectContent>
+   856→            </Select>
+   857→          </div>
+   858→        </CardContent>
+   859→      </Card>
+   860→
+   861→      {/* Table */}
+   862→      <Card className="luxury-shadow">
+   863→        <CardContent className="p-0">
+   864→          {error ? (
+   865→            <div className="p-4"><ErrorState message={error} onRetry={load} /></div>
+   866→          ) : loading ? (
+   867→            <div className="p-4"><LoadingBlock rows={6} /></div>
+   868→          ) : items.length === 0 ? (
+   869→            <div className="flex flex-col items-center justify-center gap-3 p-12 text-center">
+   870→              <div className="flex size-14 items-center justify-center rounded-full bg-muted">
+   871→                <Search className="size-6 text-muted-foreground" />
+   872→              </div>
+   873→              <p className="text-sm font-medium text-foreground">No reservations found</p>
+   874→              <p className="text-xs text-muted-foreground">
+   875→                Try adjusting your search or status filter, or create a new booking.
+   876→              </p>
+   877→            </div>
+   878→          ) : (
+   879→            <div className="overflow-x-auto">
+   880→              <Table>
+   881→                <TableHeader>
+   882→                  <TableRow className="bg-muted/60 hover:bg-muted/60">
+   883→                    <TableHead className="min-w-[160px]">Booking Number</TableHead>
+   884→                    <TableHead className="min-w-[160px]">Customer Name</TableHead>
+   885→                    <TableHead className="min-w-[200px]">Email Address</TableHead>
+   886→                    <TableHead className="min-w-[140px]">Phone Number</TableHead>
+   887→                    <TableHead className="min-w-[220px]">Activity Name</TableHead>
+   888→                    <TableHead className="w-[80px] text-center">View</TableHead>
+   889→                    <TableHead className="w-[120px] text-right">Open</TableHead>
+   890→                  </TableRow>
+   891→                </TableHeader>
+   892→                <TableBody>
+   893→                  {items.map((r) => (
+   894→                    <TableRow key={r.id} className="hover:bg-muted/40">
+   895→                      <TableCell>
+   896→                        <div className="flex flex-col gap-1">
+   897→                          <span className="font-mono text-sm font-semibold text-primary">
+   898→                            {r.reference}
+   899→                          </span>
+   900→                          <StatusBadge status={r.bookingStatus} />
+   901→                        </div>
+   902→                      </TableCell>
+   903→                      <TableCell>
+   904→                        <div className="flex items-center gap-2">
+   905→                          <User className="size-3.5 text-muted-foreground" />
+   906→                          <span className="text-sm font-medium text-foreground">{r.customerName}</span>
+   907→                        </div>
+   908→                      </TableCell>
+   909→                      <TableCell>
+   910→                        <span className="text-sm text-muted-foreground">{r.customerEmail}</span>
+   911→                      </TableCell>
+   912→                      <TableCell>
+   913→                        <span className="text-sm text-muted-foreground">
+   914→                          {r.customerPhone ?? "—"}
+   915→                        </span>
+   916→                      </TableCell>
+   917→                      <TableCell>
+   918→                        <span className="text-sm text-foreground">
+   919→                          {r.firstServiceName ?? (
+   920→                            <span className="text-muted-foreground italic">No services added</span>
+   921→                          )}
+   922→                        </span>
+   923→                        {r.serviceCount > 0 && (
+   924→                          <span className="ml-2 text-xs text-muted-foreground">
+   925→                            ({r.serviceCount} service{r.serviceCount === 1 ? "" : "s"})
+   926→                          </span>
+   927→                        )}
+   928→                      </TableCell>
+   929→                      <TableCell className="text-center">
+   930→                        <Button
+   931→                          size="icon"
+   932→                          variant="ghost"
+   933→                          className="size-8 text-primary hover:bg-primary/10"
+   934→                          onClick={() => onView(r.id)}
+   935→                          title="View fraud & booking details"
+   936→                        >
+   937→                          <Eye className="size-4" />
+   938→                        </Button>
+   939→                      </TableCell>
+   940→                      <TableCell className="text-right">
+   941→                        <Button
+   942→                          size="sm"
+   943→                          variant="default"
+   944→                          className="bg-primary text-primary-foreground hover:bg-primary/90"
+   945→                          onClick={() => onOpen(r.id)}
+   946→                        >
+   947→                          Open
+   948→                          <ChevronRight className="ml-1 size-3.5" />
+   949→                        </Button>
+   950→                      </TableCell>
+   951→                    </TableRow>
+   952→                  ))}
+   953→                </TableBody>
+   954→              </Table>
+   955→            </div>
+   956→          )}
+   957→        </CardContent>
+   958→      </Card>
+   959→    </div>
+   960→  );
+   961→}
+   962→
+   963→/* ================================================================== */
+   964→/* View 2 — Reservation Detail (single scrollable page)             */
+   965→/* ================================================================== */
+   966→
+   967→function ReservationDetail({
+   968→  reservationId,
+   969→  onBack,
+   970→  onExit,
+   971→}: {
+   972→  reservationId: string;
+   973→  onBack: () => void;
+   974→  onExit?: () => void;
+   975→}) {
+   976→  const [reservation, setReservation] = useState<ReservationT | null>(null);
+   977→  const [loading, setLoading] = useState(true);
+   978→  const [error, setError] = useState<string | null>(null);
+   979→  const [activeTab, setActiveTab] = useState<ServiceTabId>("home");
+   980→
+   981→  const load = useCallback(async () => {
+   982→    setLoading(true);
+   983→    setError(null);
+   984→    try {
+   985→      const res = await fetch(`/api/agency/reservations/${reservationId}`);
+   986→      if (!res.ok) throw new Error("Failed to load reservation");
+   987→      const data = await res.json();
+   988→      setReservation(data.reservation);
+   989→    } catch (e: any) {
+   990→      setError(e.message ?? "Failed to load reservation");
+   991→    } finally {
+   992→      setLoading(false);
+   993→    }
+   994→  }, [reservationId]);
+   995→
+   996→  useEffect(() => {
+   997→    load();
+   998→  }, [load]);
+   999→
+  1000→  return (
+  1001→    <div className="flex flex-col gap-5">
+  1002→      {/* Top action bar */}
+  1003→      <div className="sticky top-0 z-20 -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-background/90 px-4 py-3 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+  1004→        <div className="flex items-center gap-3">
+  1005→          <Button variant="ghost" size="sm" onClick={onBack}>
+  1006→            <ArrowLeft className="mr-1.5 size-4" />
+  1007→            Back
+  1008→          </Button>
+  1009→          <Separator orientation="vertical" className="hidden h-8 sm:block" />
+  1010→          <div className="hidden sm:block">
+  1011→            <div className="flex items-center gap-2">
+  1012→              <span className="font-mono text-sm font-bold text-primary">
+  1013→                {reservation?.reference ?? "—"}
+  1014→              </span>
+  1015→              {reservation && <StatusBadge status={reservation.bookingStatus} />}
+  1016→            </div>
+  1017→            <p className="text-xs text-muted-foreground">
+  1018→              Invoice {reservation?.invoiceNumber ?? "—"} ·{" "}
+  1019→              {reservation ? money(reservation.currency, reservation.totalAmount) : ""}
+  1020→            </p>
+  1021→          </div>
+  1022→        </div>
+  1023→        <div className="flex items-center gap-2">
+  1024→          <Button variant="outline" size="sm" onClick={() => load()}>
+  1025→            <RefreshCw className="mr-1.5 size-3.5" />
+  1026→            Reload
+  1027→          </Button>
+  1028→          {onExit && (
+  1029→            <Button variant="ghost" size="sm" onClick={onExit}>
+  1030→              Exit
+  1031→            </Button>
+  1032→          )}
+  1033→        </div>
+  1034→      </div>
+  1035→
+  1036→      {error ? (
+  1037→        <ErrorState message={error} onRetry={load} />
+  1038→      ) : loading || !reservation ? (
+  1039→        <div className="space-y-4">
+  1040→          <Skeleton className="h-32 w-full" />
+  1041→          <Skeleton className="h-64 w-full" />
+  1042→          <Skeleton className="h-96 w-full" />
+  1043→        </div>
+  1044→      ) : (
+  1045→        <>
+  1046→          {/* Section A — Reservation Details */}
+  1047→          <ReservationDetailsSection
+  1048→            reservation={reservation}
+  1049→            onUpdated={(r) => setReservation(r)}
+  1050→          />
+  1051→
+  1052→          {/* Section B — Guests Table */}
+  1053→          <GuestsSection
+  1054→            reservation={reservation}
+  1055→            onUpdated={(r) => setReservation(r)}
+  1056→          />
+  1057→
+  1058→          {/* Section C — Service Tabs */}
+  1059→          <Card className="luxury-shadow">
+  1060→            <CardHeader className="border-b border-border bg-muted/30 p-0">
+  1061→              <div className="flex flex-wrap items-center gap-1 p-2">
+  1062→                {SERVICE_TABS.map((tab) => {
+  1063→                  const Icon = tab.icon;
+  1064→                  const active = activeTab === tab.id;
+  1065→                  const count =
+  1066→                    tab.id === "tours"
+  1067→                      ? reservation.tours.length
+  1068→                      : tab.id === "hotels"
+  1069→                        ? reservation.hotels.length
+  1070→                        : tab.id === "transport"
+  1071→                          ? reservation.transports.length
+  1072→                          : tab.id === "payments"
+  1073→                            ? reservation.payments.length
+  1074→                            : 0;
+  1075→                  return (
+  1076→                    <button
+  1077→                      key={tab.id}
+  1078→                      onClick={() => setActiveTab(tab.id)}
+  1079→                      className={cn(
+  1080→                        "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+  1081→                        active
+  1082→                          ? "bg-primary text-primary-foreground shadow-sm"
+  1083→                          : "text-foreground hover:bg-muted",
+  1084→                      )}
+  1085→                    >
+  1086→                      <Icon className="size-4" />
+  1087→                      <span>{tab.label}</span>
+  1088→                      {count > 0 && (
+  1089→                        <span
+  1090→                          className={cn(
+  1091→                            "rounded-full px-1.5 py-0.5 text-[10px] font-bold",
+  1092→                            active
+  1093→                              ? "bg-primary-foreground/20 text-primary-foreground"
+  1094→                              : "bg-muted text-muted-foreground",
+  1095→                          )}
+  1096→                        >
+  1097→                          {count}
+  1098→                        </span>
+  1099→                      )}
+  1100→                    </button>
+  1101→                  );
+  1102→                })}
+  1103→              </div>
+  1104→            </CardHeader>
+  1105→            <CardContent className="p-0">
+  1106→              {activeTab === "home" && <HomeTab reservation={reservation} />}
+  1107→              {activeTab === "tours" && (
+  1108→                <ToursTab reservation={reservation} onUpdated={(r) => setReservation(r)} />
+  1109→              )}
+  1110→              {activeTab === "hotels" && (
+  1111→                <HotelsTab reservation={reservation} onUpdated={(r) => setReservation(r)} />
+  1112→              )}
+  1113→              {activeTab === "transport" && (
+  1114→                <TransportTab reservation={reservation} onUpdated={(r) => setReservation(r)} />
+  1115→              )}
+  1116→              {activeTab === "payments" && (
+  1117→                <PaymentsTab reservation={reservation} onUpdated={(r) => setReservation(r)} />
+  1118→              )}
+  1119→              {activeTab === "visas" && <ComingSoonTab title="Visas" icon={Sticker} />}
+  1120→              {activeTab === "flights" && <ComingSoonTab title="Flights" icon={Plane} />}
+  1121→              {activeTab === "extras" && <ComingSoonTab title="Extras" icon={Sparkles} />}
+  1122→            </CardContent>
+  1123→          </Card>
+  1124→        </>
+  1125→      )}
+  1126→    </div>
+  1127→  );
+  1128→}
+  1129→
+  1130→/* ================================================================== */
+  1131→/* Coming Soon placeholder                                           */
+  1132→/* ================================================================== */
+  1133→
+  1134→function ComingSoonTab({ title, icon: Icon }: { title: string; icon: any }) {
+  1135→  return (
+  1136→    <div className="flex flex-col items-center justify-center gap-3 p-12 text-center">
+  1137→      <div className="flex size-14 items-center justify-center rounded-full bg-muted text-muted-foreground">
+  1138→        <Icon className="size-6" />
+  1139→      </div>
+  1140→      <p className="text-sm font-medium text-foreground">{title} — Coming soon</p>
+  1141→      <p className="max-w-md text-xs text-muted-foreground">
+  1142→        This module is not yet implemented in the current build. Existing data for
+  1143→        Tours, Hotels, Transport and Payments is fully manageable via the
+  1144→        corresponding tabs.
+  1145→      </p>
+  1146→    </div>
+  1147→  );
+  1148→}
+  1149→
+  1150→/* ================================================================== */
+  1151→/* Section A — Reservation Details                                   */
+  1152→/* ================================================================== */
+  1153→
+  1154→function ReservationDetailsSection({
+  1155→  reservation,
+  1156→  onUpdated,
+  1157→}: {
+  1158→  reservation: ReservationT;
+  1159→  onUpdated: (r: ReservationT) => void;
+  1160→}) {
+  1161→  const { employees } = useEmployees();
+  1162→  const [form, setForm] = useState({
+  1163→    customerName: reservation.customerName,
+  1164→    customerEmail: reservation.customerEmail,
+  1165→    customerPhone: reservation.customerPhone ?? "",
+  1166→    isGuest: reservation.isGuest,
+  1167→    orderDate: toInputDate(reservation.orderDate),
+  1168→    invoiceDate: toInputDate(reservation.invoiceDate),
+  1169→    bookingStatus: reservation.bookingStatus,
+  1170→    saleById: reservation.saleById ?? "",
+  1171→    invoiceType: reservation.invoiceType,
+  1172→    remarks: reservation.remarks ?? "",
+  1173→    termsAccepted: reservation.termsAccepted,
+  1174→  });
+  1175→  const [saving, setSaving] = useState(false);
+  1176→
+  1177→  useEffect(() => {
+  1178→    setForm({
+  1179→      customerName: reservation.customerName,
+  1180→      customerEmail: reservation.customerEmail,
+  1181→      customerPhone: reservation.customerPhone ?? "",
+  1182→      isGuest: reservation.isGuest,
+  1183→      orderDate: toInputDate(reservation.orderDate),
+  1184→      invoiceDate: toInputDate(reservation.invoiceDate),
+  1185→      bookingStatus: reservation.bookingStatus,
+  1186→      saleById: reservation.saleById ?? "",
+  1187→      invoiceType: reservation.invoiceType,
+  1188→      remarks: reservation.remarks ?? "",
+  1189→      termsAccepted: reservation.termsAccepted,
+  1190→    });
+  1191→  }, [reservation]);
+  1192→
+  1193→  async function save() {
+  1194→    if (!form.customerName.trim() || !form.customerEmail.trim()) {
+  1195→      toast.error("Customer name and email are required");
+  1196→      return;
+  1197→    }
+  1198→    setSaving(true);
+  1199→    try {
+  1200→      const res = await fetch(`/api/agency/reservations/${reservation.id}`, {
+  1201→        method: "PUT",
+  1202→        headers: { "Content-Type": "application/json" },
+  1203→        body: JSON.stringify(form),
+  1204→      });
+  1205→      const data = await res.json();
+  1206→      if (!res.ok) throw new Error(data.error ?? "Failed to save");
+  1207→      toast.success("Reservation saved");
+  1208→      onUpdated(data.reservation);
+  1209→    } catch (e: any) {
+  1210→      toast.error(e.message ?? "Failed to save reservation");
+  1211→    } finally {
+  1212→      setSaving(false);
+  1213→    }
+  1214→  }
+  1215→
+  1216→  return (
+  1217→    <Card className="luxury-shadow">
+  1218→      <CardHeader className="gap-0 pb-3">
+  1219→        <SectionTitle
+  1220→          step="A"
+  1221→          title="Reservation Details"
+  1222→          subtitle="Master invoice & customer information"
+  1223→          right={
+  1224→            <Button
+  1225→              onClick={save}
+  1226→              disabled={saving}
+  1227→              className="bg-emerald-600 text-white hover:bg-emerald-700"
+  1228→            >
+  1229→              {saving ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Check className="mr-1.5 size-4" />}
+  1230→              Save Record
+  1231→            </Button>
+  1232→          }
+  1233→        />
+  1234→      </CardHeader>
+  1235→      <CardContent className="pt-4">
+  1236→        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+  1237→          <Field label="Customer" required className="sm:col-span-2 lg:col-span-2 xl:col-span-2">
+  1238→            <div className="flex items-center gap-2">
+  1239→              <Input
+  1240→                value={form.customerName}
+  1241→                onChange={(e) => setForm({ ...form, customerName: e.target.value })}
+  1242→                placeholder="Customer name"
+  1243→              />
+  1244→              <Button
+  1245→                type="button"
+  1246→                size="icon"
+  1247→                variant="outline"
+  1248→                className="size-9 shrink-0 border-primary/30 text-primary hover:bg-primary/5"
+  1249→                title="Add new customer"
+  1250→                onClick={() => toast.info("Customer directory — coming soon")}
+  1251→              >
+  1252→                <UserPlus className="size-4" />
+  1253→              </Button>
+  1254→            </div>
+  1255→            <label className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+  1256→              <Switch
+  1257→                checked={form.isGuest}
+  1258→                onCheckedChange={(v) => setForm({ ...form, isGuest: v })}
+  1259→              />
+  1260→              Guest checkout (no customer record)
+  1261→            </label>
+  1262→          </Field>
+  1263→
+  1264→          <Field label="Invoice #">
+  1265→            <Input value={reservation.invoiceNumber} readOnly className="bg-muted/50 font-mono" />
+  1266→          </Field>
+  1267→
+  1268→          <Field label="Reference #">
+  1269→            <Input value={reservation.reference} readOnly className="bg-muted/50 font-mono" />
+  1270→          </Field>
+  1271→
+  1272→          <Field label="Order Date">
+  1273→            <Input
+  1274→              type="date"
+  1275→              value={form.orderDate}
+  1276→              onChange={(e) => setForm({ ...form, orderDate: e.target.value })}
+  1277→            />
+  1278→          </Field>
+  1279→
+  1280→          <Field label="Invoice Date">
+  1281→            <Input
+  1282→              type="date"
+  1283→              value={form.invoiceDate}
+  1284→              onChange={(e) => setForm({ ...form, invoiceDate: e.target.value })}
+  1285→            />
+  1286→          </Field>
+  1287→
+  1288→          <Field label="Booking Status">
+  1289→            <Select value={form.bookingStatus} onValueChange={(v) => setForm({ ...form, bookingStatus: v })}>
+  1290→              <SelectTrigger><SelectValue /></SelectTrigger>
+  1291→              <SelectContent>
+  1292→                {BOOKING_STATUSES.map((s) => (
+  1293→                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+  1294→                ))}
+  1295→              </SelectContent>
+  1296→            </Select>
+  1297→          </Field>
+  1298→
+  1299→          <Field label="Sale By">
+  1300→            <Select value={form.saleById} onValueChange={(v) => setForm({ ...form, saleById: v })}>
+  1301→              <SelectTrigger><SelectValue placeholder="Select agent" /></SelectTrigger>
+  1302→              <SelectContent>
+  1303→                <SelectItem value="__none__">— None —</SelectItem>
+  1304→                {employees.map((e) => (
+  1305→                  <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+  1306→                ))}
+  1307→              </SelectContent>
+  1308→            </Select>
+  1309→          </Field>
+  1310→
+  1311→          <Field label="Created By">
+  1312→            <Input
+  1313→              value={reservation.saleBy?.name ?? "System"}
+  1314→              readOnly
+  1315→              className="bg-muted/50"
+  1316→            />
+  1317→          </Field>
+  1318→
+  1319→          <Field label="Updated By">
+  1320→            <Input value={reservation.saleBy?.name ?? "System"} readOnly className="bg-muted/50" />
+  1321→          </Field>
+  1322→
+  1323→          <Field label="Invoice Type">
+  1324→            <Select value={form.invoiceType} onValueChange={(v) => setForm({ ...form, invoiceType: v })}>
+  1325→              <SelectTrigger><SelectValue /></SelectTrigger>
+  1326→              <SelectContent>
+  1327→                {INVOICE_TYPES.map((t) => (
+  1328→                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+  1329→                ))}
+  1330→              </SelectContent>
+  1331→            </Select>
+  1332→          </Field>
+  1333→
+  1334→          <Field label="Currency">
+  1335→            <Input value={reservation.currency} readOnly className="bg-muted/50" />
+  1336→          </Field>
+  1337→
+  1338→          <Field label="Customer Email" required>
+  1339→            <Input
+  1340→              type="email"
+  1341→              value={form.customerEmail}
+  1342→              onChange={(e) => setForm({ ...form, customerEmail: e.target.value })}
+  1343→            />
+  1344→          </Field>
+  1345→
+  1346→          <Field label="Customer Phone">
+  1347→            <Input
+  1348→              value={form.customerPhone}
+  1349→              onChange={(e) => setForm({ ...form, customerPhone: e.target.value })}
+  1350→            />
+  1351→          </Field>
+  1352→
+  1353→          <Field label="Remarks" className="sm:col-span-2 lg:col-span-3 xl:col-span-4">
+  1354→            <Textarea
+  1355→              rows={2}
+  1356→              value={form.remarks}
+  1357→              onChange={(e) => setForm({ ...form, remarks: e.target.value })}
+  1358→              placeholder="Internal remarks visible to agents only…"
+  1359→            />
+  1360→          </Field>
+  1361→
+  1362→          <div className="flex items-center gap-2 sm:col-span-2 lg:col-span-3 xl:col-span-4">
+  1363→            <Switch
+  1364→              checked={form.termsAccepted}
+  1365→              onCheckedChange={(v) => setForm({ ...form, termsAccepted: v })}
+  1366→            />
+  1367→            <span className="text-sm font-medium text-foreground">
+  1368→              Terms and Conditions accepted
+  1369→            </span>
+  1370→          </div>
+  1371→        </div>
+  1372→
+  1373→        {/* Financial summary */}
+  1374→        <Separator className="my-4" />
+  1375→        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
+  1376→          <SummaryStat label="Subtotal" value={money(reservation.currency, reservation.subTotal)} />
+  1377→          <SummaryStat label="VAT (5%)" value={money(reservation.currency, reservation.vatAmount)} />
+  1378→          <SummaryStat label="Total" value={money(reservation.currency, reservation.totalAmount)} emphasized />
+  1379→          <SummaryStat label="Paid" value={money(reservation.currency, reservation.amountPaid)} positive />
+  1380→          <SummaryStat
+  1381→            label="Balance Due"
+  1382→            value={money(reservation.currency, reservation.balanceDue)}
+  1383→            warning={reservation.balanceDue > 0}
+  1384→          />
+  1385→        </div>
+  1386→      </CardContent>
+  1387→    </Card>
+  1388→  );
+  1389→}
+  1390→
+  1391→function SummaryStat({
+  1392→  label,
+  1393→  value,
+  1394→  emphasized,
+  1395→  positive,
+  1396→  warning,
+  1397→}: {
+  1398→  label: string;
+  1399→  value: string;
+  1400→  emphasized?: boolean;
+  1401→  positive?: boolean;
+  1402→  warning?: boolean;
+  1403→}) {
+  1404→  return (
+  1405→    <div
+  1406→      className={cn(
+  1407→        "rounded-md border p-3",
+  1408→        emphasized
+  1409→          ? "border-primary/30 bg-primary/5"
+  1410→          : warning
+  1411→            ? "border-amber-200 bg-amber-50"
+  1412→            : positive
+  1413→              ? "border-emerald-200 bg-emerald-50"
+  1414→              : "border-border bg-muted/30",
+  1415→      )}
+  1416→    >
+  1417→      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+  1418→      <p
+  1419→        className={cn(
+  1420→          "mt-1 font-mono text-sm font-bold",
+  1421→          emphasized ? "text-primary" : warning ? "text-amber-700" : positive ? "text-emerald-700" : "text-foreground",
+  1422→        )}
+  1423→      >
+  1424→        {value}
+  1425→      </p>
+  1426→    </div>
+  1427→  );
+  1428→}
+  1429→
+  1430→/* ================================================================== */
+  1431→/* Section B — Guests Table                                          */
+  1432→/* ================================================================== */
+  1433→
+  1434→interface GuestRow {
+  1435→  tempId: string;
+  1436→  id?: string;
+  1437→  title: string;
+  1438→  fullName: string;
+  1439→  email: string;
+  1440→  phone: string;
+  1441→  passportNumber: string;
+  1442→  paxType: string;
+  1443→  nationality: string;
+  1444→}
+  1445→
+  1446→function GuestsSection({
+  1447→  reservation,
+  1448→  onUpdated,
+  1449→}: {
+  1450→  reservation: ReservationT;
+  1451→  onUpdated: (r: ReservationT) => void;
+  1452→}) {
+  1453→  const [rows, setRows] = useState<GuestRow[]>([]);
+  1454→  const [saving, setSaving] = useState(false);
+  1455→
+  1456→  useEffect(() => {
+  1457→    setRows(
+  1458→      reservation.guests.map((g) => ({
+  1459→        tempId: g.id,
+  1460→        id: g.id,
+  1461→        title: g.title,
+  1462→        fullName: g.fullName,
+  1463→        email: g.email ?? "",
+  1464→        phone: g.phone ?? "",
+  1465→        passportNumber: g.passportNumber ?? "",
+  1466→        paxType: g.paxType,
+  1467→        nationality: g.nationality ?? "",
+  1468→      })),
+  1469→    );
+  1470→  }, [reservation.guests]);
+  1471→
+  1472→  function addRow() {
+  1473→    setRows((rs) => [
+  1474→      ...rs,
+  1475→      {
+  1476→        tempId: `new-${Date.now()}`,
+  1477→        title: "Mr",
+  1478→        fullName: "",
+  1479→        email: "",
+  1480→        phone: "",
+  1481→        passportNumber: "",
+  1482→        paxType: "ADULT",
+  1483→        nationality: "",
+  1484→      },
+  1485→    ]);
+  1486→  }
+  1487→
+  1488→  function updateRow(tempId: string, patch: Partial<GuestRow>) {
+  1489→    setRows((rs) => rs.map((r) => (r.tempId === tempId ? { ...r, ...patch } : r)));
+  1490→  }
+  1491→
+  1492→  function removeRow(tempId: string) {
+  1493→    setRows((rs) => rs.filter((r) => r.tempId !== tempId));
+  1494→  }
+  1495→
+  1496→  async function saveAll() {
+  1497→    const valid = rows.filter((r) => r.fullName.trim());
+  1498→    if (valid.length === 0) {
+  1499→      toast.error("Add at least one guest with a name");
+  1500→      return;
+  1501→    }
+  1502→    setSaving(true);
+  1503→    try {
+  1504→      // For simplicity: delete existing guests, then re-create all.
+  1505→      // This matches the "Save Record(s)" semantic in the screenshot.
+  1506→      await fetch(`/api/agency/reservations/${reservation.id}/guests`, {
+  1507→        method: "GET",
+  1508→      }); // ensure we have latest list (used in diff below)
+  1509→
+  1510→      const existing = reservation.guests;
+  1511→      const keptIds = new Set(valid.filter((r) => r.id).map((r) => r.id!));
+  1512→
+  1513→      // Delete removed
+  1514→      await Promise.all(
+  1515→        existing
+  1516→          .filter((g) => !keptIds.has(g.id))
+  1517→          .map((g) =>
+  1518→            fetch(`/api/agency/reservations/${reservation.id}/guests/${g.id}`, {
+  1519→              method: "DELETE",
+  1520→            }),
+  1521→          ),
+  1522→      );
+  1523→
+  1524→      // Update existing + create new
+  1525→      for (const r of valid) {
+  1526→        const payload = {
+  1527→          title: r.title,
+  1528→          fullName: r.fullName,
+  1529→          email: r.email || null,
+  1530→          phone: r.phone || null,
+  1531→          passportNumber: r.passportNumber || null,
+  1532→          paxType: r.paxType,
+  1533→          nationality: r.nationality || null,
+  1534→        };
+  1535→        if (r.id) {
+  1536→          await fetch(`/api/agency/reservations/${reservation.id}/guests/${r.id}`, {
+  1537→            method: "PUT",
+  1538→            headers: { "Content-Type": "application/json" },
+  1539→            body: JSON.stringify(payload),
+  1540→          });
+  1541→        } else {
+  1542→          await fetch(`/api/agency/reservations/${reservation.id}/guests`, {
+  1543→            method: "POST",
+  1544→            headers: { "Content-Type": "application/json" },
+  1545→            body: JSON.stringify(payload),
+  1546→          });
+  1547→        }
+  1548→      }
+  1549→
+  1550→      toast.success(`Saved ${valid.length} guest${valid.length === 1 ? "" : "s"}`);
+  1551→
+  1552→      // Reload reservation
+  1553→      const res = await fetch(`/api/agency/reservations/${reservation.id}`);
+  1554→      const data = await res.json();
+  1555→      if (res.ok) onUpdated(data.reservation);
+  1556→    } catch (e: any) {
+  1557→      toast.error(e.message ?? "Failed to save guests");
+  1558→    } finally {
+  1559→      setSaving(false);
+  1560→    }
+  1561→  }
+  1562→
+  1563→  return (
+  1564→    <Card className="luxury-shadow">
+  1565→      <CardHeader className="gap-0 pb-3">
+  1566→        <SectionTitle
+  1567→          step="B"
+  1568→          title="Guest(s) Details"
+  1569→          subtitle="Travellers associated with this reservation"
+  1570→          right={
+  1571→            <div className="flex items-center gap-2">
+  1572→              <Button
+  1573→                onClick={addRow}
+  1574→                variant="outline"
+  1575→                className="border-primary/30 text-primary hover:bg-primary/5"
+  1576→              >
+  1577→                <Plus className="mr-1.5 size-4" />
+  1578→                Add New
+  1579→              </Button>
+  1580→              <Button
+  1581→                onClick={saveAll}
+  1582→                disabled={saving}
+  1583→                className="bg-emerald-600 text-white hover:bg-emerald-700"
+  1584→              >
+  1585→                {saving ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Check className="mr-1.5 size-4" />}
+  1586→                Save Record(s)
+  1587→              </Button>
+  1588→            </div>
+  1589→          }
+  1590→        />
+  1591→      </CardHeader>
+  1592→      <CardContent className="pt-4">
+  1593→        {rows.length === 0 ? (
+  1594→          <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/20 p-8 text-center">
+  1595→            <Users className="size-6 text-muted-foreground" />
+  1596→            <p className="text-sm font-medium text-foreground">No guests added yet</p>
+  1597→            <p className="text-xs text-muted-foreground">Click "Add New" to add the first guest.</p>
+  1598→            <Button size="sm" onClick={addRow} className="mt-2 bg-primary text-primary-foreground hover:bg-primary/90">
+  1599→              <Plus className="mr-1.5 size-4" />
+  1600→              Add First Guest
+  1601→            </Button>
+  1602→          </div>
+  1603→        ) : (
+  1604→          <div className="overflow-x-auto">
+  1605→            <Table>
+  1606→              <TableHeader>
+  1607→                <TableRow className="bg-muted/60 hover:bg-muted/60">
+  1608→                  <TableHead className="min-w-[110px]">Title</TableHead>
+  1609→                  <TableHead className="min-w-[180px]">Guest Name</TableHead>
+  1610→                  <TableHead className="min-w-[200px]">Email</TableHead>
+  1611→                  <TableHead className="min-w-[150px]">Phone</TableHead>
+  1612→                  <TableHead className="min-w-[160px]">Passport</TableHead>
+  1613→                  <TableHead className="min-w-[120px]">Pax Type</TableHead>
+  1614→                  <TableHead className="min-w-[180px]">Nationality</TableHead>
+  1615→                  <TableHead className="w-[60px] text-center"></TableHead>
+  1616→                </TableRow>
+  1617→              </TableHeader>
+  1618→              <TableBody>
+  1619→                {rows.map((row) => (
+  1620→                  <TableRow key={row.tempId}>
+  1621→                    <TableCell>
+  1622→                      <Select value={row.title} onValueChange={(v) => updateRow(row.tempId, { title: v })}>
+  1623→                        <SelectTrigger className="h-9 w-full min-w-[100px]"><SelectValue /></SelectTrigger>
+  1624→                        <SelectContent>
+  1625→                          {GUEST_TITLES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+  1626→                        </SelectContent>
+  1627→                      </Select>
+  1628→                    </TableCell>
+  1629→                    <TableCell>
+  1630→                      <Input
+  1631→                        className="h-9"
+  1632→                        value={row.fullName}
+  1633→                        onChange={(e) => updateRow(row.tempId, { fullName: e.target.value })}
+  1634→                        placeholder="Full name"
+  1635→                      />
+  1636→                    </TableCell>
+  1637→                    <TableCell>
+  1638→                      <Input
+  1639→                        className="h-9"
+  1640→                        type="email"
+  1641→                        value={row.email}
+  1642→                        onChange={(e) => updateRow(row.tempId, { email: e.target.value })}
+  1643→                        placeholder="email@example.com"
+  1644→                      />
+  1645→                    </TableCell>
+  1646→                    <TableCell>
+  1647→                      <Input
+  1648→                        className="h-9"
+  1649→                        value={row.phone}
+  1650→                        onChange={(e) => updateRow(row.tempId, { phone: e.target.value })}
+  1651→                        placeholder="+971…"
+  1652→                      />
+  1653→                    </TableCell>
+  1654→                    <TableCell>
+  1655→                      <Input
+  1656→                        className="h-9"
+  1657→                        value={row.passportNumber}
+  1658→                        onChange={(e) => updateRow(row.tempId, { passportNumber: e.target.value })}
+  1659→                        placeholder=" Passport #"
+  1660→                      />
+  1661→                    </TableCell>
+  1662→                    <TableCell>
+  1663→                      <Select value={row.paxType} onValueChange={(v) => updateRow(row.tempId, { paxType: v })}>
+  1664→                        <SelectTrigger className="h-9 w-full min-w-[110px]"><SelectValue /></SelectTrigger>
+  1665→                        <SelectContent>
+  1666→                          {PAX_TYPES.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+  1667→                        </SelectContent>
+  1668→                      </Select>
+  1669→                    </TableCell>
+  1670→                    <TableCell>
+  1671→                      <Select value={row.nationality} onValueChange={(v) => updateRow(row.tempId, { nationality: v })}>
+  1672→                        <SelectTrigger className="h-9 w-full min-w-[160px]"><SelectValue placeholder="Select" /></SelectTrigger>
+  1673→                        <SelectContent>
+  1674→                          {COUNTRIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+  1675→                        </SelectContent>
+  1676→                      </Select>
+  1677→                    </TableCell>
+  1678→                    <TableCell className="text-center">
+  1679→                      <Button
+  1680→                        size="icon"
+  1681→                        variant="ghost"
+  1682→                        className="size-8 text-rose-500 hover:bg-rose-50"
+  1683→                        onClick={() => removeRow(row.tempId)}
+  1684→                        title="Remove guest"
+  1685→                      >
+  1686→                        <Trash2 className="size-4" />
+  1687→                      </Button>
+  1688→                    </TableCell>
+  1689→                  </TableRow>
+  1690→                ))}
+  1691→              </TableBody>
+  1692→            </Table>
+  1693→          </div>
+  1694→        )}
+  1695→      </CardContent>
+  1696→    </Card>
+  1697→  );
+  1698→}
+  1699→
+  1700→/* ================================================================== */
+  1701→/* Home Tab — reservation summary                                    */
+  1702→/* ================================================================== */
+  1703→
+  1704→function HomeTab({ reservation }: { reservation: ReservationT }) {
+  1705→  return (
+  1706→    <div className="p-5">
+  1707→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+  1708→        <div className="lg:col-span-2 space-y-4">
+  1709→          <div className="rounded-lg border border-border bg-muted/20 p-4">
+  1710→            <h4 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+  1711→              Customer
+  1712→            </h4>
+  1713→            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+  1714→              <DetailItem label="Name" value={reservation.customerName} icon={User} />
+  1715→              <DetailItem label="Email" value={reservation.customerEmail} icon={Info} />
+  1716→              <DetailItem label="Phone" value={reservation.customerPhone ?? "—"} icon={Phone} />
+  1717→              <DetailItem label="Guest checkout" value={reservation.isGuest ? "Yes" : "No"} icon={Users} />
+  1718→            </div>
+  1719→          </div>
+  1720→
+  1721→          <div className="rounded-lg border border-border bg-muted/20 p-4">
+  1722→            <h4 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+  1723→              Services
+  1724→            </h4>
+  1725→            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+  1726→              <ServiceCount label="Tours" count={reservation.tours.length} icon={MapPin} />
+  1727→              <ServiceCount label="Hotels" count={reservation.hotels.length} icon={HotelIcon} />
+  1728→              <ServiceCount label="Transport" count={reservation.transports.length} icon={CreditCard} />
+  1729→            </div>
+  1730→          </div>
+  1731→        </div>
+  1732→
+  1733→        <div className="space-y-4">
+  1734→          <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+  1735→            <h4 className="mb-3 text-sm font-semibold uppercase tracking-wider text-primary">
+  1736→              Invoice Summary
+  1737→            </h4>
+  1738→            <div className="space-y-2 text-sm">
+  1739→              <div className="flex justify-between">
+  1740→                <span className="text-muted-foreground">Reference</span>
+  1741→                <span className="font-mono font-semibold text-foreground">{reservation.reference}</span>
+  1742→              </div>
+  1743→              <div className="flex justify-between">
+  1744→                <span className="text-muted-foreground">Invoice #</span>
+  1745→                <span className="font-mono font-semibold text-foreground">{reservation.invoiceNumber}</span>
+  1746→              </div>
+  1747→              <Separator className="my-2" />
+  1748→              <div className="flex justify-between">
+  1749→                <span className="text-muted-foreground">Subtotal</span>
+  1750→                <span className="font-mono text-foreground">{money(reservation.currency, reservation.subTotal)}</span>
+  1751→              </div>
+  1752→              <div className="flex justify-between">
+  1753→                <span className="text-muted-foreground">VAT</span>
+  1754→                <span className="font-mono text-foreground">{money(reservation.currency, reservation.vatAmount)}</span>
+  1755→              </div>
+  1756→              <Separator className="my-2" />
+  1757→              <div className="flex justify-between text-base font-bold">
+  1758→                <span className="text-foreground">Total</span>
+  1759→                <span className="font-mono text-primary">{money(reservation.currency, reservation.totalAmount)}</span>
+  1760→              </div>
+  1761→              <div className="flex justify-between text-emerald-700">
+  1762→                <span>Paid</span>
+  1763→                <span className="font-mono">{money(reservation.currency, reservation.amountPaid)}</span>
+  1764→              </div>
+  1765→              <div className="flex justify-between text-amber-700">
+  1766→                <span>Balance</span>
+  1767→                <span className="font-mono">{money(reservation.currency, reservation.balanceDue)}</span>
+  1768→              </div>
+  1769→            </div>
+  1770→          </div>
+  1771→
+  1772→          <div className="rounded-lg border border-border bg-muted/20 p-4">
+  1773→            <h4 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+  1774→              Timeline
+  1775→            </h4>
+  1776→            <div className="space-y-2 text-xs">
+  1777→              <DetailItem label="Order Date" value={fmtDate(reservation.orderDate)} icon={CalendarDays} />
+  1778→              <DetailItem label="Invoice Date" value={fmtDate(reservation.invoiceDate)} icon={CalendarDays} />
+  1779→              <DetailItem label="Created" value={fmtDateTime(reservation.createdAt)} icon={CalendarDays} />
+  1780→              <DetailItem label="Updated" value={fmtDateTime(reservation.updatedAt)} icon={CalendarDays} />
+  1781→            </div>
+  1782→          </div>
+  1783→        </div>
+  1784→      </div>
+  1785→    </div>
+  1786→  );
+  1787→}
+  1788→
+  1789→function DetailItem({ label, value, icon: Icon }: { label: string; value: string; icon: any }) {
+  1790→  return (
+  1791→    <div className="flex items-center gap-2">
+  1792→      <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+  1793→      <div className="min-w-0">
+  1794→        <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</p>
+  1795→        <p className="truncate text-sm font-medium text-foreground">{value}</p>
+  1796→      </div>
+  1797→    </div>
+  1798→  );
+  1799→}
+  1800→
+  1801→function ServiceCount({ label, count, icon: Icon }: { label: string; count: number; icon: any }) {
+  1802→  return (
+  1803→    <div className="rounded-md border border-border bg-card p-3 text-center">
+  1804→      <Icon className="mx-auto size-5 text-primary" />
+  1805→      <p className="mt-1 text-2xl font-bold text-foreground">{count}</p>
+  1806→      <p className="text-xs text-muted-foreground">{label}</p>
+  1807→    </div>
+  1808→  );
+  1809→}
+  1810→
+  1811→/* ================================================================== */
+  1812→/* Service Tab Header bar                                            */
+  1813→/* ================================================================== */
+  1814→
+  1815→function ServiceFormHeader({
+  1816→  title,
+  1817→  updatedAt,
+  1818→  updatedBy,
+  1819→  onClose,
+  1820→}: {
+  1821→  title: string;
+  1822→  updatedAt?: string;
+  1823→  updatedBy?: string;
+  1824→  onClose: () => void;
+  1825→}) {
+  1826→  return (
+  1827→    <div className="flex items-center justify-between gap-3 bg-primary px-4 py-2.5 text-primary-foreground">
+  1828→      <h4
+  1829→        className="text-base font-semibold"
+  1830→        style={{ fontFamily: "var(--font-display)" }}
+  1831→      >
+  1832→        {title}
+  1833→      </h4>
+  1834→      <div className="flex items-center gap-3">
+  1835→        <span className="hidden text-xs text-primary-foreground/80 sm:inline">
+  1836→          Updated at: {updatedAt ? fmtDateTime(updatedAt) : "—"}
+  1837→          {updatedBy && <span> By: {updatedBy}</span>}
+  1838→        </span>
+  1839→        <Button
+  1840→          size="icon"
+  1841→          variant="ghost"
+  1842→          className="size-7 text-primary-foreground hover:bg-primary-foreground/20"
+  1843→          onClick={onClose}
+  1844→          title="Close form"
+  1845→        >
+  1846→          <X className="size-4" />
+  1847→        </Button>
+  1848→      </div>
+  1849→    </div>
+  1850→  );
+  1851→}
+  1852→
+  1853→function ServiceListHeader({
+  1854→  title,
+  1855→  subtitle,
+  1856→  onAdd,
+  1857→  addLabel,
+  1858→}: {
+  1859→  title: string;
+  1860→  subtitle?: string;
+  1861→  onAdd: () => void;
+  1862→  addLabel: string;
+  1863→}) {
+  1864→  return (
+  1865→    <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border bg-muted/30 px-4 py-3">
+  1866→      <div>
+  1867→        <h4
+  1868→          className="text-base font-semibold text-foreground"
+  1869→          style={{ fontFamily: "var(--font-display)" }}
+  1870→        >
+  1871→          {title}
+  1872→        </h4>
+  1873→        {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+  1874→      </div>
+  1875→      <Button
+  1876→        onClick={onAdd}
+  1877→        className="bg-primary text-primary-foreground hover:bg-primary/90"
+  1878→      >
+  1879→        <Plus className="mr-1.5 size-4" />
+  1880→        {addLabel}
+  1881→      </Button>
+  1882→    </div>
+  1883→  );
+  1884→}
+  1885→
+  1886→/* ================================================================== */
+  1887→/* Tours Tab                                                          */
+  1888→/* ================================================================== */
+  1889→
+  1890→interface TourFormState {
+  1891→  id?: string;
+  1892→  tourId: string;
+  1893→  tourName: string;
+  1894→  tourOption: string;
+  1895→  transferOption: string;
+  1896→  pickupLocation: string;
+  1897→  tourDate: string;
+  1898→  pickupTime: string;
+  1899→  timeSlot: string;
+  1900→  noOfAdults: string;
+  1901→  noOfChildren: string;
+  1902→  supplierId: string;
+  1903→  confirmationNumber: string;
+  1904→  status: string;
+  1905→  comments: string;
+  1906→  costUnit: string;
+  1907→  adultCostRate: string;
+  1908→  childCostRate: string;
+  1909→  carCostRate: string;
+  1910→  adultSellRate: string;
+  1911→  childSellRate: string;
+  1912→  carSellRate: string;
+  1913→  showOnVoucher: boolean;
+  1914→}
+  1915→
+  1916→function emptyTourForm(): TourFormState {
+  1917→  return {
+  1918→    tourId: "",
+  1919→    tourName: "",
+  1920→    tourOption: "",
+  1921→    transferOption: "WITHOUT_TRANSFER",
+  1922→    pickupLocation: "",
+  1923→    tourDate: toInputDate(new Date().toISOString()),
+  1924→    pickupTime: "",
+  1925→    timeSlot: "",
+  1926→    noOfAdults: "1",
+  1927→    noOfChildren: "0",
+  1928→    supplierId: "",
+  1929→    confirmationNumber: "",
+  1930→    status: "INITIATED",
+  1931→    comments: "",
+  1932→    costUnit: "PER_PERSON",
+  1933→    adultCostRate: "0",
+  1934→    childCostRate: "0",
+  1935→    carCostRate: "0",
+  1936→    adultSellRate: "0",
+  1937→    childSellRate: "0",
+  1938→    carSellRate: "0",
+  1939→    showOnVoucher: true,
+  1940→  };
+  1941→}
+  1942→
+  1943→function tourFromBooking(t: TourBookingT): TourFormState {
+  1944→  return {
+  1945→    id: t.id,
+  1946→    tourId: t.tourId ?? "",
+  1947→    tourName: t.tourName,
+  1948→    tourOption: t.tourOption ?? "",
+  1949→    transferOption: t.transferOption,
+  1950→    pickupLocation: t.pickupLocation ?? "",
+  1951→    tourDate: toInputDate(t.tourDate),
+  1952→    pickupTime: t.pickupTime ?? "",
+  1953→    timeSlot: t.timeSlot ?? "",
+  1954→    noOfAdults: String(t.noOfAdults),
+  1955→    noOfChildren: String(t.noOfChildren),
+  1956→    supplierId: t.supplierId ?? "",
+  1957→    confirmationNumber: t.confirmationNumber ?? "",
+  1958→    status: t.status,
+  1959→    comments: t.comments ?? "",
+  1960→    costUnit: t.costUnit,
+  1961→    adultCostRate: String(t.adultCostRate),
+  1962→    childCostRate: String(t.childCostRate),
+  1963→    carCostRate: String(t.carCostRate),
+  1964→    adultSellRate: String(t.adultSellRate),
+  1965→    childSellRate: String(t.childSellRate),
+  1966→    carSellRate: String(t.carSellRate),
+  1967→    showOnVoucher: t.showOnVoucher,
+  1968→  };
+  1969→}
+  1970→
+  1971→function ToursTab({
+  1972→  reservation,
+  1973→  onUpdated,
+  1974→}: {
+  1975→  reservation: ReservationT;
+  1976→  onUpdated: (r: ReservationT) => void;
+  1977→}) {
+  1978→  const { experiences } = useExperiences();
+  1979→  const { suppliers, reload: reloadSuppliers } = useSuppliers("TOUR");
+  1980→  const [mode, setMode] = useState<"list" | "form">("list");
+  1981→  const [form, setForm] = useState<TourFormState>(emptyTourForm());
+  1982→  const [saving, setSaving] = useState(false);
+  1983→  const [confirmDelete, setConfirmDelete] = useState<TourBookingT | null>(null);
+  1984→
+  1985→  function openAdd() {
+  1986→    setForm(emptyTourForm());
+  1987→    setMode("form");
+  1988→  }
+  1989→  function openEdit(t: TourBookingT) {
+  1990→    setForm(tourFromBooking(t));
+  1991→    setMode("form");
+  1992→  }
+  1993→
+  1994→  function selectTour(id: string) {
+  1995→    const exp = experiences.find((e) => e.id === id);
+  1996→    if (exp) {
+  1997→      setForm((f) => ({
+  1998→        ...f,
+  1999→        tourId: id,
+  2000→        tourName: exp.title,
+
+[showing lines 1-2000 of 3817; use offset=2001 with limit to continue reading]

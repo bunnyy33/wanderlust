@@ -1,0 +1,702 @@
+     1→  1860→  subtitle?: string;
+     2→  1861→  onAdd: () => void;
+     3→  1862→  addLabel: string;
+     4→  1863→}) {
+     5→  1864→  return (
+     6→  1865→    <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border bg-muted/30 px-4 py-3">
+     7→  1866→      <div>
+     8→  1867→        <h4
+     9→  1868→          className="text-base font-semibold text-foreground"
+    10→  1869→          style={{ fontFamily: "var(--font-display)" }}
+    11→  1870→        >
+    12→  1871→          {title}
+    13→  1872→        </h4>
+    14→  1873→        {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+    15→  1874→      </div>
+    16→  1875→      <Button
+    17→  1876→        onClick={onAdd}
+    18→  1877→        className="bg-primary text-primary-foreground hover:bg-primary/90"
+    19→  1878→      >
+    20→  1879→        <Plus className="mr-1.5 size-4" />
+    21→  1880→        {addLabel}
+    22→  1881→      </Button>
+    23→  1882→    </div>
+    24→  1883→  );
+    25→  1884→}
+    26→  1885→
+    27→  1886→/* ================================================================== */
+    28→  1887→/* Tours Tab                                                          */
+    29→  1888→/* ================================================================== */
+    30→  1889→
+    31→  1890→interface TourFormState {
+    32→  1891→  id?: string;
+    33→  1892→  tourId: string;
+    34→  1893→  tourName: string;
+    35→  1894→  tourOption: string;
+    36→  1895→  transferOption: string;
+    37→  1896→  pickupLocation: string;
+    38→  1897→  tourDate: string;
+    39→  1898→  pickupTime: string;
+    40→  1899→  timeSlot: string;
+    41→  1900→  noOfAdults: string;
+    42→  1901→  noOfChildren: string;
+    43→  1902→  supplierId: string;
+    44→  1903→  confirmationNumber: string;
+    45→  1904→  status: string;
+    46→  1905→  comments: string;
+    47→  1906→  costUnit: string;
+    48→  1907→  adultCostRate: string;
+    49→  1908→  childCostRate: string;
+    50→  1909→  carCostRate: string;
+    51→  1910→  adultSellRate: string;
+    52→  1911→  childSellRate: string;
+    53→  1912→  carSellRate: string;
+    54→  1913→  showOnVoucher: boolean;
+    55→  1914→}
+    56→  1915→
+    57→  1916→function emptyTourForm(): TourFormState {
+    58→  1917→  return {
+    59→  1918→    tourId: "",
+    60→  1919→    tourName: "",
+    61→  1920→    tourOption: "",
+    62→  1921→    transferOption: "WITHOUT_TRANSFER",
+    63→  1922→    pickupLocation: "",
+    64→  1923→    tourDate: toInputDate(new Date().toISOString()),
+    65→  1924→    pickupTime: "",
+    66→  1925→    timeSlot: "",
+    67→  1926→    noOfAdults: "1",
+    68→  1927→    noOfChildren: "0",
+    69→  1928→    supplierId: "",
+    70→  1929→    confirmationNumber: "",
+    71→  1930→    status: "INITIATED",
+    72→  1931→    comments: "",
+    73→  1932→    costUnit: "PER_PERSON",
+    74→  1933→    adultCostRate: "0",
+    75→  1934→    childCostRate: "0",
+    76→  1935→    carCostRate: "0",
+    77→  1936→    adultSellRate: "0",
+    78→  1937→    childSellRate: "0",
+    79→  1938→    carSellRate: "0",
+    80→  1939→    showOnVoucher: true,
+    81→  1940→  };
+    82→  1941→}
+    83→  1942→
+    84→  1943→function tourFromBooking(t: TourBookingT): TourFormState {
+    85→  1944→  return {
+    86→  1945→    id: t.id,
+    87→  1946→    tourId: t.tourId ?? "",
+    88→  1947→    tourName: t.tourName,
+    89→  1948→    tourOption: t.tourOption ?? "",
+    90→  1949→    transferOption: t.transferOption,
+    91→  1950→    pickupLocation: t.pickupLocation ?? "",
+    92→  1951→    tourDate: toInputDate(t.tourDate),
+    93→  1952→    pickupTime: t.pickupTime ?? "",
+    94→  1953→    timeSlot: t.timeSlot ?? "",
+    95→  1954→    noOfAdults: String(t.noOfAdults),
+    96→  1955→    noOfChildren: String(t.noOfChildren),
+    97→  1956→    supplierId: t.supplierId ?? "",
+    98→  1957→    confirmationNumber: t.confirmationNumber ?? "",
+    99→  1958→    status: t.status,
+   100→  1959→    comments: t.comments ?? "",
+   101→  1960→    costUnit: t.costUnit,
+   102→  1961→    adultCostRate: String(t.adultCostRate),
+   103→  1962→    childCostRate: String(t.childCostRate),
+   104→  1963→    carCostRate: String(t.carCostRate),
+   105→  1964→    adultSellRate: String(t.adultSellRate),
+   106→  1965→    childSellRate: String(t.childSellRate),
+   107→  1966→    carSellRate: String(t.carSellRate),
+   108→  1967→    showOnVoucher: t.showOnVoucher,
+   109→  1968→  };
+   110→  1969→}
+   111→  1970→
+   112→  1971→function ToursTab({
+   113→  1972→  reservation,
+   114→  1973→  onUpdated,
+   115→  1974→}: {
+   116→  1975→  reservation: ReservationT;
+   117→  1976→  onUpdated: (r: ReservationT) => void;
+   118→  1977→}) {
+   119→  1978→  const { experiences } = useExperiences();
+   120→  1979→  const { suppliers, reload: reloadSuppliers } = useSuppliers("TOUR");
+   121→  1980→  const [mode, setMode] = useState<"list" | "form">("list");
+   122→  1981→  const [form, setForm] = useState<TourFormState>(emptyTourForm());
+   123→  1982→  const [saving, setSaving] = useState(false);
+   124→  1983→  const [confirmDelete, setConfirmDelete] = useState<TourBookingT | null>(null);
+   125→  1984→
+   126→  1985→  function openAdd() {
+   127→  1986→    setForm(emptyTourForm());
+   128→  1987→    setMode("form");
+   129→  1988→  }
+   130→  1989→  function openEdit(t: TourBookingT) {
+   131→  1990→    setForm(tourFromBooking(t));
+   132→  1991→    setMode("form");
+   133→  1992→  }
+   134→  1993→
+   135→  1994→  function selectTour(id: string) {
+   136→  1995→    const exp = experiences.find((e) => e.id === id);
+   137→  1996→    if (exp) {
+   138→  1997→      setForm((f) => ({
+   139→  1998→        ...f,
+   140→  1999→        tourId: id,
+   141→  2000→        tourName: exp.title,
+   142→  2001→      }));
+   143→  2002→    } else {
+   144→  2003→      setForm((f) => ({ ...f, tourId: "" }));
+   145→  2004→    }
+   146→  2005→  }
+   147→  2006→
+   148→  2007→  async function save() {
+   149→  2008→    if (!form.tourName.trim()) {
+   150→  2009→      toast.error("Tour is required");
+   151→  2010→      return;
+   152→  2011→    }
+   153→  2012→    setSaving(true);
+   154→  2013→    try {
+   155→  2014→      const payload = {
+   156→  2015→        ...form,
+   157→  2016→        noOfAdults: num(form.noOfAdults),
+   158→  2017→        noOfChildren: num(form.noOfChildren),
+   159→  2018→        adultCostRate: num(form.adultCostRate),
+   160→  2019→        childCostRate: num(form.childCostRate),
+   161→  2020→        carCostRate: num(form.carCostRate),
+   162→  2021→        adultSellRate: num(form.adultSellRate),
+   163→  2022→        childSellRate: num(form.childSellRate),
+   164→  2023→        carSellRate: num(form.carSellRate),
+   165→  2024→        tourDate: form.tourDate ? new Date(form.tourDate).toISOString() : null,
+   166→  2025→      };
+   167→  2026→      const url = form.id
+   168→  2027→        ? `/api/agency/reservations/${reservation.id}/tours/${form.id}`
+   169→  2028→        : `/api/agency/reservations/${reservation.id}/tours`;
+   170→  2029→      const res = await fetch(url, {
+   171→  2030→        method: form.id ? "PUT" : "POST",
+   172→  2031→        headers: { "Content-Type": "application/json" },
+   173→  2032→        body: JSON.stringify(payload),
+   174→  2033→      });
+   175→  2034→      const data = await res.json();
+   176→  2035→      if (!res.ok) throw new Error(data.error ?? "Failed to save");
+   177→  2036→      toast.success(form.id ? "Tour updated" : "Tour added");
+   178→  2037→      // reload reservation
+   179→  2038→      const r = await fetch(`/api/agency/reservations/${reservation.id}`);
+   180→  2039→      const d = await r.json();
+   181→  2040→      if (r.ok) onUpdated(d.reservation);
+   182→  2041→      setMode("list");
+   183→  2042→    } catch (e: any) {
+   184→  2043→      toast.error(e.message ?? "Failed to save tour");
+   185→  2044→    } finally {
+   186→  2045→      setSaving(false);
+   187→  2046→    }
+   188→  2047→  }
+   189→  2048→
+   190→  2049→  async function remove(t: TourBookingT) {
+   191→  2050→    try {
+   192→  2051→      const res = await fetch(`/api/agency/reservations/${reservation.id}/tours/${t.id}`, {
+   193→  2052→        method: "DELETE",
+   194→  2053→      });
+   195→  2054→      if (!res.ok) throw new Error("Failed to delete");
+   196→  2055→      toast.success("Tour deleted");
+   197→  2056→      const r = await fetch(`/api/agency/reservations/${reservation.id}`);
+   198→  2057→      const d = await r.json();
+   199→  2058→      if (r.ok) onUpdated(d.reservation);
+   200→  2059→    } catch (e: any) {
+   201→  2060→      toast.error(e.message ?? "Failed to delete tour");
+   202→  2061→    } finally {
+   203→  2062→      setConfirmDelete(null);
+   204→  2063→    }
+   205→  2064→  }
+   206→  2065→
+   207→  2066→  if (mode === "form") {
+   208→  2067→    return (
+   209→  2068→      <TourFormCard
+   210→  2069→        form={form}
+   211→  2070→        setForm={setForm}
+   212→  2071→        experiences={experiences}
+   213→  2072→        suppliers={suppliers}
+   214→  2073→        onSupplierAdded={reloadSuppliers}
+   215→  2074→        onSelectTour={selectTour}
+   216→  2075→        onSave={save}
+   217→  2076→        onCancel={() => setMode("list")}
+   218→  2077→        saving={saving}
+   219→  2078→        isEdit={!!form.id}
+   220→  2079→        updatedAt={form.id ? reservation.tours.find((t) => t.id === form.id)?.updatedAt : undefined}
+   221→  2080→      />
+   222→  2081→    );
+   223→  2082→  }
+   224→  2083→
+   225→  2084→  return (
+   226→  2085→    <div>
+   227→  2086→      <ServiceListHeader
+   228→  2087→        title="Tour Bookings"
+   229→  2088→        subtitle={`${reservation.tours.length} tour(s) on this reservation`}
+   230→  2089→        onAdd={openAdd}
+   231→  2090→        addLabel="Add Tour"
+   232→  2091→      />
+   233→  2092→      <div className="p-4">
+   234→  2093→        {reservation.tours.length === 0 ? (
+   235→  2094→          <EmptyServiceState
+   236→  2095→            icon={MapPin}
+   237→  2096→            message="No tours added yet"
+   238→  2097→            hint="Click 'Add Tour' to create the first tour booking for this reservation."
+   239→  2098→            cta={{ label: "Add Tour", onClick: openAdd }}
+   240→  2099→          />
+   241→  2100→        ) : (
+   242→  2101→          <div className="overflow-x-auto">
+   243→  2102→            <Table>
+   244→  2103→              <TableHeader>
+   245→  2104→                <TableRow className="bg-muted/60 hover:bg-muted/60">
+   246→  2105→                  <TableHead className="min-w-[220px]">Tour</TableHead>
+   247→  2106→                  <TableHead className="min-w-[120px]">Date</TableHead>
+   248→  2107→                  <TableHead className="min-w-[80px] text-center">Adults</TableHead>
+   249→  2108→                  <TableHead className="min-w-[80px] text-center">Children</TableHead>
+   250→  2109→                  <TableHead className="min-w-[120px]">Supplier</TableHead>
+   251→  2110→                  <TableHead className="min-w-[120px]">Status</TableHead>
+   252→  2111→                  <TableHead className="min-w-[110px] text-right">Sell Total</TableHead>
+   253→  2112→                  <TableHead className="w-[100px] text-center">Actions</TableHead>
+   254→  2113→                </TableRow>
+   255→  2114→              </TableHeader>
+   256→  2115→              <TableBody>
+   257→  2116→                {reservation.tours.map((t) => {
+   258→  2117→                  const statusMeta = statusMetaFromList(SERVICE_STATUSES, t.status);
+   259→  2118→                  return (
+   260→  2119→                    <TableRow key={t.id} className="hover:bg-muted/40">
+   261→  2120→                      <TableCell>
+   262→  2121→                        <div className="flex flex-col gap-0.5">
+   263→  2122→                          <span className="text-sm font-medium text-foreground">{t.tourName}</span>
+   264→  2123→                          {t.tourOption && (
+   265→  2124→                            <span className="text-xs text-muted-foreground">{t.tourOption}</span>
+   266→  2125→                          )}
+   267→  2126→                          {t.transferOption !== "WITHOUT_TRANSFER" && (
+   268→  2127→                            <span className="text-xs text-muted-foreground">
+   269→  2128→                              {TRANSFER_OPTIONS.find((o) => o.value === t.transferOption)?.label ?? t.transferOption}
+   270→  2129→                            </span>
+   271→  2130→                          )}
+   272→  2131→                        </div>
+   273→  2132→                      </TableCell>
+   274→  2133→                      <TableCell>
+   275→  2134→                        <span className="text-sm text-foreground">{fmtDate(t.tourDate)}</span>
+   276→  2135→                      </TableCell>
+   277→  2136→                      <TableCell className="text-center text-sm">{t.noOfAdults}</TableCell>
+   278→  2137→                      <TableCell className="text-center text-sm">{t.noOfChildren}</TableCell>
+   279→  2138→                      <TableCell>
+   280→  2139→                        <span className="text-sm text-foreground">{t.supplierName ?? "—"}</span>
+   281→  2140→                      </TableCell>
+   282→  2141→                      <TableCell>
+   283→  2142→                        <Badge variant="outline" className="whitespace-nowrap">
+   284→  2143→                          {statusMeta?.label ?? t.status}
+   285→  2144→                        </Badge>
+   286→  2145→                      </TableCell>
+   287→  2146→                      <TableCell className="text-right font-mono text-sm font-semibold text-foreground">
+   288→  2147→                        {money(reservation.currency, t.totalSell)}
+   289→  2148→                      </TableCell>
+   290→  2149→                      <TableCell>
+   291→  2150→                        <div className="flex items-center justify-center gap-1">
+   292→  2151→                          <Button
+   293→  2152→                            size="icon"
+   294→  2153→                            variant="ghost"
+   295→  2154→                            className="size-8 text-primary hover:bg-primary/10"
+   296→  2155→                            onClick={() => openEdit(t)}
+   297→  2156→                            title="Edit tour"
+   298→  2157→                          >
+   299→  2158→                            <Pencil className="size-4" />
+   300→  2159→                          </Button>
+   301→  2160→                          <Button
+   302→  2161→                            size="icon"
+   303→  2162→                            variant="ghost"
+   304→  2163→                            className="size-8 text-rose-500 hover:bg-rose-50"
+   305→  2164→                            onClick={() => setConfirmDelete(t)}
+   306→  2165→                            title="Delete tour"
+   307→  2166→                          >
+   308→  2167→                            <Trash2 className="size-4" />
+   309→  2168→                          </Button>
+   310→  2169→                        </div>
+   311→  2170→                      </TableCell>
+   312→  2171→                    </TableRow>
+   313→  2172→                  );
+   314→  2173→                })}
+   315→  2174→              </TableBody>
+   316→  2175→            </Table>
+   317→  2176→          </div>
+   318→  2177→        )}
+   319→  2178→      </div>
+   320→  2179→
+   321→  2180→      <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+   322→  2181→        <AlertDialogContent>
+   323→  2182→          <AlertDialogHeader>
+   324→  2183→            <AlertDialogTitle>Delete tour booking?</AlertDialogTitle>
+   325→  2184→            <AlertDialogDescription>
+   326→  2185→              This will permanently remove “{confirmDelete?.tourName}” from this reservation.
+   327→  2186→              This action cannot be undone.
+   328→  2187→            </AlertDialogDescription>
+   329→  2188→          </AlertDialogHeader>
+   330→  2189→          <AlertDialogFooter>
+   331→  2190→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   332→  2191→            <AlertDialogAction
+   333→  2192→              className="bg-rose-600 text-white hover:bg-rose-700"
+   334→  2193→              onClick={() => confirmDelete && remove(confirmDelete)}
+   335→  2194→            >
+   336→  2195→              Delete
+   337→  2196→            </AlertDialogAction>
+   338→  2197→          </AlertDialogFooter>
+   339→  2198→        </AlertDialogContent>
+   340→  2199→      </AlertDialog>
+   341→  2200→    </div>
+   342→  2201→  );
+   343→  2202→}
+   344→  2203→
+   345→  2204→function TourFormCard({
+   346→  2205→  form,
+   347→  2206→  setForm,
+   348→  2207→  experiences,
+   349→  2208→  suppliers,
+   350→  2209→  onSupplierAdded,
+   351→  2210→  onSelectTour,
+   352→  2211→  onSave,
+   353→  2212→  onCancel,
+   354→  2213→  saving,
+   355→  2214→  isEdit,
+   356→  2215→  updatedAt,
+   357→  2216→}: {
+   358→  2217→  form: TourFormState;
+   359→  2218→  setForm: React.Dispatch<React.SetStateAction<TourFormState>>;
+   360→  2219→  experiences: ExperienceOption[];
+   361→  2220→  suppliers: SupplierT[];
+   362→  2221→  onSupplierAdded: () => void;
+   363→  2222→  onSelectTour: (id: string) => void;
+   364→  2223→  onSave: () => void;
+   365→  2224→  onCancel: () => void;
+   366→  2225→  saving: boolean;
+   367→  2226→  isEdit: boolean;
+   368→  2227→  updatedAt?: string;
+   369→  2228→}) {
+   370→  2229→  // Auto-calc net rates in real-time
+   371→  2230→  const pricing = useMemo(
+   372→  2231→    () =>
+   373→  2232→      calcTourPricing({
+   374→  2233→        costUnit: form.costUnit,
+   375→  2234→        adultCostRate: num(form.adultCostRate),
+   376→  2235→        childCostRate: num(form.childCostRate),
+   377→  2236→        carCostRate: num(form.carCostRate),
+   378→  2237→        adultSellRate: num(form.adultSellRate),
+   379→  2238→        childSellRate: num(form.childSellRate),
+   380→  2239→        carSellRate: num(form.carSellRate),
+   381→  2240→        noOfAdults: num(form.noOfAdults),
+   382→  2241→        noOfChildren: num(form.noOfChildren),
+   383→  2242→      }),
+   384→  2243→    [form],
+   385→  2244→  );
+   386→  2245→
+   387→  2246→  return (
+   388→  2247→    <div>
+   389→  2248→      <ServiceFormHeader
+   390→  2249→        title={isEdit ? "Edit Tour Booking" : "Add Tour Booking"}
+   391→  2250→        updatedAt={updatedAt}
+   392→  2251→        updatedBy={isEdit ? "Agent" : undefined}
+   393→  2252→        onClose={onCancel}
+   394→  2253→      />
+   395→  2254→
+   396→  2255→      <div className="max-h-[60vh] overflow-y-auto p-4">
+   397→  2256→        {/* Tour Details */}
+   398→  2257→        <div className="mb-4">
+   399→  2258→          <h5 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+   400→  2259→            Tour Details
+   401→  2260→          </h5>
+   402→  2261→          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+   403→  2262→            <Field label="Tour" required className="lg:col-span-2 xl:col-span-2">
+   404→  2263→              <Select value={form.tourId} onValueChange={onSelectTour}>
+   405→  2264→                <SelectTrigger><SelectValue placeholder="Select a tour" /></SelectTrigger>
+   406→  2265→                <SelectContent>
+   407→  2266→                  {experiences.map((e) => (
+   408→  2267→                    <SelectItem key={e.id} value={e.id}>
+   409→  2268→                      {e.title} ({e.currency} {e.price})
+   410→  2269→                    </SelectItem>
+   411→  2270→                  ))}
+   412→  2271→                </SelectContent>
+   413→  2272→              </Select>
+   414→  2273→            </Field>
+   415→  2274→
+   416→  2275→            <Field label="Tour Option">
+   417→  2276→              <Input
+   418→  2277→                value={form.tourOption}
+   419→  2278→                onChange={(e) => setForm((f) => ({ ...f, tourOption: e.target.value }))}
+   420→  2279→                placeholder="e.g. 2 Park Pass"
+   421→  2280→              />
+   422→  2281→            </Field>
+   423→  2282→
+   424→  2283→            <Field label="Transfer Option">
+   425→  2284→              <Select value={form.transferOption} onValueChange={(v) => setForm((f) => ({ ...f, transferOption: v }))}>
+   426→  2285→                <SelectTrigger><SelectValue /></SelectTrigger>
+   427→  2286→                <SelectContent>
+   428→  2287→                  {TRANSFER_OPTIONS.map((o) => (
+   429→  2288→                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+   430→  2289→                  ))}
+   431→  2290→                </SelectContent>
+   432→  2291→              </Select>
+   433→  2292→            </Field>
+   434→  2293→
+   435→  2294→            <Field label="Pickup Location">
+   436→  2295→              <Input
+   437→  2296→                value={form.pickupLocation}
+   438→  2297→                onChange={(e) => setForm((f) => ({ ...f, pickupLocation: e.target.value }))}
+   439→  2298→                placeholder="Hotel / address"
+   440→  2299→              />
+   441→  2300→            </Field>
+   442→  2301→
+   443→  2302→            <Field label="Tour Date">
+   444→  2303→              <Input
+   445→  2304→                type="date"
+   446→  2305→                value={form.tourDate}
+   447→  2306→                onChange={(e) => setForm((f) => ({ ...f, tourDate: e.target.value }))}
+   448→  2307→              />
+   449→  2308→            </Field>
+   450→  2309→
+   451→  2310→            <Field label="Pickup Time">
+   452→  2311→              <Input
+   453→  2312→                value={form.pickupTime}
+   454→  2313→                onChange={(e) => setForm((f) => ({ ...f, pickupTime: e.target.value }))}
+   455→  2314→                placeholder="e.g. 08:30 AM"
+   456→  2315→              />
+   457→  2316→            </Field>
+   458→  2317→
+   459→  2318→            <Field label="Time Slot">
+   460→  2319→              <Input
+   461→  2320→                value={form.timeSlot}
+   462→  2321→                onChange={(e) => setForm((f) => ({ ...f, timeSlot: e.target.value }))}
+   463→  2322→                placeholder="e.g. Morning"
+   464→  2323→              />
+   465→  2324→            </Field>
+   466→  2325→
+   467→  2326→            <Field label="No of Adults">
+   468→  2327→              <Input
+   469→  2328→                type="number"
+   470→  2329→                min="0"
+   471→  2330→                value={form.noOfAdults}
+   472→  2331→                onChange={(e) => setForm((f) => ({ ...f, noOfAdults: e.target.value }))}
+   473→  2332→              />
+   474→  2333→            </Field>
+   475→  2334→
+   476→  2335→            <Field label="No of Children">
+   477→  2336→              <Input
+   478→  2337→                type="number"
+   479→  2338→                min="0"
+   480→  2339→                value={form.noOfChildren}
+   481→  2340→                onChange={(e) => setForm((f) => ({ ...f, noOfChildren: e.target.value }))}
+   482→  2341→              />
+   483→  2342→            </Field>
+   484→  2343→
+   485→  2344→            <Field label="Supplier">
+   486→  2345→              <div className="flex items-center gap-2">
+   487→  2346→                <Select value={form.supplierId} onValueChange={(v) => setForm((f) => ({ ...f, supplierId: v }))}>
+   488→  2347→                  <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
+   489→  2348→                  <SelectContent>
+   490→  2349→                    <SelectItem value="__none__">— None —</SelectItem>
+   491→  2350→                    {suppliers.map((s) => (
+   492→  2351→                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+   493→  2352→                    ))}
+   494→  2353→                  </SelectContent>
+   495→  2354→                </Select>
+   496→  2355→                <AddSupplierButton defaultType="TOUR" onCreated={onSupplierAdded} />
+   497→  2356→              </div>
+   498→  2357→            </Field>
+   499→  2358→
+   500→  2359→            <Field label="Confirmation Number">
+   501→  2360→              <Input
+   502→  2361→                value={form.confirmationNumber}
+   503→  2362→                onChange={(e) => setForm((f) => ({ ...f, confirmationNumber: e.target.value }))}
+   504→  2363→                placeholder="Supplier ref"
+   505→  2364→              />
+   506→  2365→            </Field>
+   507→  2366→
+   508→  2367→            <Field label="Status">
+   509→  2368→              <Select value={form.status} onValueChange={(v) => setForm((f) => ({ ...f, status: v }))}>
+   510→  2369→                <SelectTrigger><SelectValue /></SelectTrigger>
+   511→  2370→                <SelectContent>
+   512→  2371→                  {SERVICE_STATUSES.map((s) => (
+   513→  2372→                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+   514→  2373→                  ))}
+   515→  2374→                </SelectContent>
+   516→  2375→              </Select>
+   517→  2376→            </Field>
+   518→  2377→
+   519→  2378→            <Field label="Comments" className="sm:col-span-2 lg:col-span-3 xl:col-span-4">
+   520→  2379→              <Textarea
+   521→  2380→                rows={2}
+   522→  2381→                value={form.comments}
+   523→  2382→                onChange={(e) => setForm((f) => ({ ...f, comments: e.target.value }))}
+   524→  2383→                placeholder="Internal comments…"
+   525→  2384→              />
+   526→  2385→            </Field>
+   527→  2386→          </div>
+   528→  2387→        </div>
+   529→  2388→
+   530→  2389→        <Separator className="my-4" />
+   531→  2390→
+   532→  2391→        {/* Pricing */}
+   533→  2392→        <div className="mb-4">
+   534→  2393→          <div className="mb-3 flex items-center justify-between gap-3">
+   535→  2394→            <h5 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+   536→  2395→              Pricing
+   537→  2396→            </h5>
+   538→  2397→            <Field label="Cost Unit" className="w-48">
+   539→  2398→              <Select value={form.costUnit} onValueChange={(v) => setForm((f) => ({ ...f, costUnit: v }))}>
+   540→  2399→                <SelectTrigger><SelectValue /></SelectTrigger>
+   541→  2400→                <SelectContent>
+   542→  2401→                  {COST_UNITS.map((u) => (
+   543→  2402→                    <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
+   544→  2403→                  ))}
+   545→  2404→                </SelectContent>
+   546→  2405→              </Select>
+   547→  2406→            </Field>
+   548→  2407→          </div>
+   549→  2408→
+   550→  2409→          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+   551→  2410→            {/* Cost */}
+   552→  2411→            <div className="rounded-lg border border-border bg-muted/20 p-4">
+   553→  2412→              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+   554→  2413→                Cost Price (Net)
+   555→  2414→              </p>
+   556→  2415→              <div className="grid grid-cols-2 gap-3">
+   557→  2416→                <Field label="Adult Rate">
+   558→  2417→                  <Input
+   559→  2418→                    type="number"
+   560→  2419→                    step="0.01"
+   561→  2420→                    value={form.adultCostRate}
+   562→  2421→                    onChange={(e) => setForm((f) => ({ ...f, adultCostRate: e.target.value }))}
+   563→  2422→                  />
+   564→  2423→                </Field>
+   565→  2424→                <Field label="Child Rate">
+   566→  2425→                  <Input
+   567→  2426→                    type="number"
+   568→  2427→                    step="0.01"
+   569→  2428→                    value={form.childCostRate}
+   570→  2429→                    onChange={(e) => setForm((f) => ({ ...f, childCostRate: e.target.value }))}
+   571→  2430→                  />
+   572→  2431→                </Field>
+   573→  2432→                <Field label="Car Rate (transfer)">
+   574→  2433→                  <Input
+   575→  2434→                    type="number"
+   576→  2435→                    step="0.01"
+   577→  2436→                    value={form.carCostRate}
+   578→  2437→                    onChange={(e) => setForm((f) => ({ ...f, carCostRate: e.target.value }))}
+   579→  2438→                  />
+   580→  2439→                </Field>
+   581→  2440→                <div className="col-span-2 grid grid-cols-2 gap-3">
+   582→  2441→                  <Field label="Net Adult Rate">
+   583→  2442→                    <Input value={pricing.netAdultRate.toFixed(2)} readOnly className="bg-muted/50 font-mono text-sm" />
+   584→  2443→                  </Field>
+   585→  2444→                  <Field label="Net Child Rate">
+   586→  2445→                    <Input value={pricing.netChildRate.toFixed(2)} readOnly className="bg-muted/50 font-mono text-sm" />
+   587→  2446→                  </Field>
+   588→  2447→                </div>
+   589→  2448→                <div className="col-span-2">
+   590→  2449→                  <div className="flex justify-between rounded-md border border-border bg-card p-2">
+   591→  2450→                    <span className="text-xs font-semibold uppercase text-muted-foreground">Total Cost</span>
+   592→  2451→                    <span className="font-mono text-sm font-bold text-foreground">
+   593→  2452→                      {pricing.totalCost.toFixed(2)}
+   594→  2453→                    </span>
+   595→  2454→                  </div>
+   596→  2455→                </div>
+   597→  2456→              </div>
+   598→  2457→            </div>
+   599→  2458→
+   600→  2459→            {/* Sell */}
+   601→  2460→            <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+   602→  2461→              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-primary">
+   603→  2462→                Selling Price (to customer)
+   604→  2463→              </p>
+   605→  2464→              <div className="grid grid-cols-2 gap-3">
+   606→  2465→                <Field label="Adult Rate">
+   607→  2466→                  <Input
+   608→  2467→                    type="number"
+   609→  2468→                    step="0.01"
+   610→  2469→                    value={form.adultSellRate}
+   611→  2470→                    onChange={(e) => setForm((f) => ({ ...f, adultSellRate: e.target.value }))}
+   612→  2471→                  />
+   613→  2472→                </Field>
+   614→  2473→                <Field label="Child Rate">
+   615→  2474→                  <Input
+   616→  2475→                    type="number"
+   617→  2476→                    step="0.01"
+   618→  2477→                    value={form.childSellRate}
+   619→  2478→                    onChange={(e) => setForm((f) => ({ ...f, childSellRate: e.target.value }))}
+   620→  2479→                  />
+   621→  2480→                </Field>
+   622→  2481→                <Field label="Car Rate (transfer)">
+   623→  2482→                  <Input
+   624→  2483→                    type="number"
+   625→  2484→                    step="0.01"
+   626→  2485→                    value={form.carSellRate}
+   627→  2486→                    onChange={(e) => setForm((f) => ({ ...f, carSellRate: e.target.value }))}
+   628→  2487→                  />
+   629→  2488→                </Field>
+   630→  2489→                <div className="col-span-2 grid grid-cols-2 gap-3">
+   631→  2490→                  <Field label="Net Adult Rate">
+   632→  2491→                    <Input value={pricing.sellNetAdult.toFixed(2)} readOnly className="bg-card font-mono text-sm" />
+   633→  2492→                  </Field>
+   634→  2493→                  <Field label="Net Child Rate">
+   635→  2494→                    <Input value={pricing.sellNetChild.toFixed(2)} readOnly className="bg-card font-mono text-sm" />
+   636→  2495→                  </Field>
+   637→  2496→                </div>
+   638→  2497→                <div className="col-span-2">
+   639→  2498→                  <div className="flex justify-between rounded-md border border-primary/20 bg-card p-2">
+   640→  2499→                    <span className="text-xs font-semibold uppercase text-primary">Total Sell</span>
+   641→  2500→                    <span className="font-mono text-sm font-bold text-primary">
+   642→  2501→                      {pricing.totalSell.toFixed(2)}
+   643→  2502→                    </span>
+   644→  2503→                  </div>
+   645→  2504→                </div>
+   646→  2505→              </div>
+   647→  2506→            </div>
+   648→  2507→          </div>
+   649→  2508→
+   650→  2509→          <div className="mt-4 flex items-center gap-2">
+   651→  2510→            <Switch
+   652→  2511→              checked={form.showOnVoucher}
+   653→  2512→              onCheckedChange={(v) => setForm((f) => ({ ...f, showOnVoucher: v }))}
+   654→  2513→            />
+   655→  2514→            <span className="text-sm font-medium text-foreground">Show on voucher</span>
+   656→  2515→          </div>
+   657→  2516→        </div>
+   658→  2517→      </div>
+   659→  2518→
+   660→  2519→      {/* Footer */}
+   661→  2520→      <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/30 px-4 py-3">
+   662→  2521→        <Button variant="outline" onClick={onCancel}>Cancel</Button>
+   663→  2522→        <Button onClick={onSave} disabled={saving} className="bg-emerald-600 text-white hover:bg-emerald-700">
+   664→  2523→          {saving ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Check className="mr-1.5 size-4" />}
+   665→  2524→          {isEdit ? "Save Changes" : "Add Tour"}
+   666→  2525→        </Button>
+   667→  2526→      </div>
+   668→  2527→    </div>
+   669→  2528→  );
+   670→  2529→}
+   671→  2530→
+   672→  2531→/* ================================================================== */
+   673→  2532→/* Transport Tab                                                     */
+   674→  2533→/* ================================================================== */
+   675→  2534→
+   676→  2535→interface TransportFormState {
+   677→  2536→  id?: string;
+   678→  2537→  carType: string;
+   679→  2538→  noOfPax: string;
+   680→  2539→  transportType: string;
+   681→  2540→  pickupDateTime: string;
+   682→  2541→  pickupLocation: string;
+   683→  2542→  dropoffLocation: string;
+   684→  2543→  flightNumber: string;
+   685→  2544→  netRate: string;
+   686→  2545→  sellRate: string;
+   687→  2546→  supplierId: string;
+   688→  2547→  contactNumber: string;
+   689→  2548→  status: string;
+   690→  2549→  confirmationNumber: string;
+   691→  2550→  comments: string;
+   692→  2551→  showOnVoucher: boolean;
+   693→  2552→}
+   694→  2553→
+   695→  2554→function emptyTransportForm(): TransportFormState {
+   696→  2555→  return {
+   697→  2556→    carType: "SEDAN",
+   698→  2557→    noOfPax: "1",
+   699→  2558→    transportType: "ARRIVAL",
+   700→  2559→    pickupDateTime: toInputDateTime(new Date().toISOString()),
+   701→
+   702→[showing lines 1860-2559 of 3817; use offset=2560 with limit to continue reading]

@@ -257,6 +257,14 @@ model Reservation {
   remarks         String?
   termsAccepted   Boolean  @default(false)
 
+  // Fraud detection (mirrors website Booking model — used by agency verification dialog)
+  ipAddress       String?
+  userAgent       String?
+  fraudScore      Int      @default(0)
+  fraudSignals    String   @default("[]") // JSON array of strings
+  isFlagged       Boolean  @default(false)
+  manualReview    String   @default("PENDING") // PENDING | REAL | SPAM
+
   // Relations
   employee        Employee? @relation(fields: [saleById], references: [id])
   tours           TourBooking[]
