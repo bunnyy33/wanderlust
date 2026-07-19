@@ -202,3 +202,270 @@ model EmailLog {
   relatedRef String?  // booking reference, etc.
   createdAt  DateTime @default(now())
 }
+
+// ============================================================
+// AGENCY BOOKING SYSTEM — B2B travel agency management
+// ============================================================
+
+// Employees who use the agency dashboard
+model Employee {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         String   @default("JUNIOR_AGENT") // ADMIN | SENIOR_AGENT | JUNIOR_AGENT | ACCOUNTS
+  phone        String?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  reservations Reservation[]
+  tours       TourBooking[]
+  transports  TransportBooking[]
+  hotels      HotelBooking[]
+}
+
+// Master reservation — one customer, one invoice, multiple services
+model Reservation {
+  id              String   @id @default(cuid())
+  reference       String   @unique // WL-RES-064289
+  invoiceNumber   String   @unique // WL-INV-064289
+
+  // Customer info
+  customerId      String?
+  customerName    String
+  customerEmail   String
+  customerPhone   String?
+  isGuest         Boolean  @default(false) // guest checkout (no customer record)
+
+  // Booking metadata
+  orderDate       DateTime @default(now())
+  invoiceDate     DateTime?
+  bookingStatus   String   @default("PENDING") // PENDING | SUPPLIER_PENDING | CUSTOMER_CONFIRMED | CONFIRMED | COMPLETED | CANCELLED
+  saleById        String?  // employee who made the sale
+  createdById     String?  // employee who created the record
+  updatedById     String?
+
+  // Financial
+  invoiceType     String   @default("TAXABLE") // TAXABLE | ZERO_RATED | EXEMPT
+  currency        String   @default("AED")
+  subTotal        Float    @default(0)
+  vatAmount       Float    @default(0)
+  totalAmount     Float    @default(0)
+  amountPaid      Float    @default(0)
+  balanceDue      Float    @default(0)
+
+  // Additional
+  remarks         String?
+  termsAccepted   Boolean  @default(false)
+
+  // Relations
+  employee        Employee? @relation(fields: [saleById], references: [id])
+  tours           TourBooking[]
+  transports      TransportBooking[]
+  hotels          HotelBooking[]
+  guests          Guest[]
+  payments        Payment[]
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Guest details for a reservation (can have multiple guests)
+model Guest {
+  id            String   @id @default(cuid())
+  reservationId String
+  reservation   Reservation @relation(fields: [reservationId], references: [id])
+  title         String   @default("Mr") // Mr | Mrs | Miss | Master | Dr
+  fullName      String
+  email         String?
+  phone         String?
+  passportNumber String?
+  paxType       String   @default("ADULT") // ADULT | CHILD | INFANT
+  nationality   String?
+  dateOfBirth   DateTime?
+  createdAt     DateTime @default(now())
+}
+
+// Tour booking — linked to a reservation
+model TourBooking {
+  id              String   @id @default(cuid())
+  reservationId   String
+  reservation     Reservation @relation(fields: [reservationId], references: [id])
+
+  // Tour details
+  tourId          String?  // link to Experience catalog
+  tourName        String   // free text or from catalog
+  tourOption      String?  // e.g. "DUBAI PARKS 1 DAY 2 PARK PASS"
+  transferOption  String   @default("WITHOUT_TRANSFER") // WITHOUT_TRANSFER | SHARED | PRIVATE
+  pickupLocation  String?
+  tourDate        DateTime
+  pickupTime      String?
+  timeSlot        String?
+
+  // Pax
+  noOfAdults      Int      @default(0)
+  noOfChildren    Int      @default(0)
+
+  // Supplier
+  supplierId      String?
+  supplierName    String?
+  confirmationNumber String?
+
+  // Status
+  status          String   @default("INITIATED") // INITIATED | SUPPLIER_CONFIRMED | CUSTOMER_CONFIRMED | CONFIRMED | CANCELLED
+  comments        String?
+
+  // Pricing — Cost (net)
+  costUnit        String   @default("PER_PERSON") // PER_PERSON | PER_BOOKING
+  adultCostRate   Float    @default(0)  // net rate per adult
+  childCostRate   Float    @default(0)  // net rate per child
+  carCostRate     Float    @default(0)  // transfer cost
+  netAdultRate    Float    @default(0)  // calculated: adultCostRate * noOfAdults
+  netChildRate    Float    @default(0)  // calculated: childCostRate * noOfChildren
+  totalCost       Float    @default(0)  // calculated: netAdultRate + netChildRate + carCostRate
+
+  // Pricing — Sell (to customer)
+  adultSellRate   Float    @default(0)
+  childSellRate   Float    @default(0)
+  carSellRate     Float    @default(0)
+  sellNetAdult    Float    @default(0)  // calculated
+  sellNetChild    Float    @default(0)  // calculated
+  totalSell       Float    @default(0)  // calculated
+
+  // Show on voucher
+  showOnVoucher   Boolean  @default(true)
+
+  // Audit
+  createdBy       String?
+  employee        Employee? @relation(fields: [createdBy], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Transport booking — linked to a reservation
+model TransportBooking {
+  id              String   @id @default(cuid())
+  reservationId   String
+  reservation     Reservation @relation(fields: [reservationId], references: [id])
+
+  // Transport details
+  carType         String   @default("SEDAN") // SEDAN | SUV | MINIVAN | VAN | LUXURY | COACH
+  noOfPax         Int      @default(1)
+  transportType   String   @default("ARRIVAL") // ARRIVAL | DEPARTURE | INTERCITY | HOURLY
+  pickupDateTime  DateTime
+  pickupLocation  String
+  dropoffLocation String
+  flightNumber    String?
+
+  // Supplier
+  supplierId      String?
+  supplierName    String?
+  contactNumber   String?
+  confirmationNumber String?
+
+  // Status
+  status          String   @default("INITIATED")
+  comments        String?
+
+  // Pricing
+  netRate         Float    @default(0)  // cost price
+  sellRate        Float    @default(0)  // selling price
+  margin          Float    @default(0)  // calculated: sellRate - netRate
+
+  // Show on voucher
+  showOnVoucher   Boolean  @default(true)
+
+  // Audit
+  createdBy       String?
+  employee        Employee? @relation(fields: [createdBy], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Hotel booking — linked to a reservation
+model HotelBooking {
+  id              String   @id @default(cuid())
+  reservationId   String
+  reservation     Reservation @relation(fields: [reservationId], references: [id])
+
+  // Hotel details
+  hotelId         String?  // link to Hotel catalog
+  hotelName       String
+  roomType        String   // e.g. "Sky Pool Suite"
+  mealPlan        String   @default("BB") // BB | HB | FB | AI
+  checkInDate     DateTime
+  checkOutDate    DateTime
+  nights          Int      @default(1)
+  noOfRooms       Int      @default(1)
+  noOfAdults      Int      @default(1)
+  noOfChildren    Int      @default(0)
+
+  // Supplier
+  supplierId      String?
+  supplierName    String?
+  confirmationNumber String?
+
+  // Status
+  status          String   @default("INITIATED")
+  comments        String?
+
+  // Pricing — Cost (net)
+  costPerNight    Float    @default(0)
+  totalCost       Float    @default(0)  // calculated: costPerNight * nights * rooms
+
+  // Pricing — Sell
+  sellPerNight    Float    @default(0)
+  totalSell       Float    @default(0)  // calculated
+
+  // Show on voucher
+  showOnVoucher   Boolean  @default(true)
+
+  // Audit
+  createdBy       String?
+  employee        Employee? @relation(fields: [createdBy], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Supplier management
+model Supplier {
+  id              String   @id @default(cuid())
+  name            String
+  type            String   @default("TOUR") // TOUR | HOTEL | TRANSPORT | VISA | FLIGHT
+  contactPerson   String?
+  email           String?
+  phone           String?
+  whatsapp        String?
+  address         String?
+  city            String?
+  country         String?
+
+  // Contracted rates info
+  currency        String   @default("AED")
+  paymentTerms    String?  // e.g. "30 days credit", "Prepaid", "On arrival"
+  markupType      String   @default("PERCENT") // PERCENT | FIXED
+  markupValue     Float    @default(20) // default markup %
+
+  // Status
+  active          Boolean  @default(true)
+  rating          Int      @default(5) // 1-5 reliability rating
+
+  createdAt       DateTime @default(now())
+}
+
+// Payment tracking
+model Payment {
+  id              String   @id @default(cuid())
+  reservationId   String
+  reservation     Reservation @relation(fields: [reservationId], references: [id])
+
+  amount          Float
+  currency        String   @default("AED")
+  paymentMethod   String   @default("CASH") // CASH | CARD | BANK_TRANSFER | WHATSAPP | ONLINE
+  paymentDate     DateTime @default(now())
+  reference       String?  // bank transfer ref / payment gateway ref
+  status          String   @default("RECEIVED") // PENDING | RECEIVED | REFUNDED
+  notes           String?
+
+  receivedBy      String?  // employee who received the payment
+  createdAt       DateTime @default(now())
+}
