@@ -1,16 +1,30 @@
 "use client";
 
 /**
- * Wanderlust — Agency Booking System Dashboard
+ * Wanderlust — Agency Booking System Dashboard (Rayna Tours / JTR Holidays style)
  *
- * B2B travel agency management: reservations (master invoices) with tours,
- * transports, hotels, guests, payments. Plus supplier + employee management.
+ * B2B travel agency management UI. The screen has exactly two views:
  *
- * Wired to /api/agency/* routes — all 401-guarded by isAdminAuthed.
+ *   View 1 — Booking List: a dense table of reservations with search +
+ *             status filter + "New Booking" CTA. Each row has an eye (View)
+ *             and an "Open" CTA that both open the reservation detail.
+ *
+ *   View 2 — Reservation Detail: ONE scrollable page (not a wizard, not
+ *             multi-step tabs that switch pages) with three inline sections:
+ *               A. Reservation Details (grid of fields + Save Record)
+ *               B. Guests Table (inline editable rows + Save Record(s))
+ *               C. Service Tabs (horizontal tab bar with inline forms)
+ *
+ * Tours / Transport / Hotels / Payments tabs all render their form inline
+ * (no dialogs, no page switches). Visas / Flights / Extras show a styled
+ * "Coming soon" placeholder.
+ *
+ * All API calls go through /api/agency/* (isAdminAuthed-guarded) and
+ * /api/experiences (public catalog) + /api/agency/employees + /api/agency/suppliers.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { format, parseISO, differenceInCalendarDays } from "date-fns";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { format, parseISO } from "date-fns";
 import { toast } from "sonner";
 import {
   AlertCircle,
@@ -18,19 +32,16 @@ import {
   Banknote,
   Briefcase,
   Building2,
-  CalendarCheck,
   CalendarDays,
+  Check,
   CheckCircle2,
   ChevronRight,
-  ClipboardList,
   CreditCard,
-  DollarSign,
-  Edit2,
   Eye,
+  Home as HomeIcon,
   Hotel as HotelIcon,
   Info,
   Loader2,
-  Mail,
   MapPin,
   Minus,
   Pencil,
@@ -39,14 +50,16 @@ import {
   Plus,
   RefreshCw,
   Save,
+  Search,
   Settings,
-  Star,
+  ShieldCheck,
+  Sparkles,
+  Sticker,
   Trash2,
   User,
   UserPlus,
   Users,
   X,
-  Search,
 } from "lucide-react";
 
 import type {
@@ -56,15 +69,11 @@ import type {
   PaymentT,
   ReservationListItemT,
   ReservationT,
-  Role,
   SupplierT,
   TourBookingT,
   TransportBookingT,
 } from "@/lib/agency-types";
-import {
-  calcHotelPricing,
-  calcTourPricing,
-} from "@/lib/agency-types";
+import { calcHotelPricing, calcTourPricing } from "@/lib/agency-types";
 import { cn } from "@/lib/utils";
 
 import {
@@ -82,7 +91,6 @@ import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -114,177 +122,206 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 
-/* ------------------------------------------------------------------ */
-/* Constants                                                           */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/* Constants                                                          */
+/* ================================================================== */
 
-const RESERVATION_STATUSES = [
-  "PENDING",
-  "SUPPLIER_PENDING",
-  "CUSTOMER_CONFIRMED",
-  "CONFIRMED",
-  "COMPLETED",
-  "CANCELLED",
-] as const;
+const BOOKING_STATUSES: { value: string; label: string; badgeClass: string }[] = [
+  { value: "PENDING", label: "In Process", badgeClass: "bg-amber-100 text-amber-800 border-amber-200" },
+  { value: "SUPPLIER_PENDING", label: "Supplier Confirmation Pending", badgeClass: "bg-orange-100 text-orange-800 border-orange-200" },
+  { value: "SUPPLIER_CONFIRMED", label: "Supplier Confirmed", badgeClass: "bg-sky-100 text-sky-800 border-sky-200" },
+  { value: "CUSTOMER_CONFIRMED", label: "Customer Confirmed", badgeClass: "bg-teal-100 text-teal-800 border-teal-200" },
+  { value: "COMPLETED", label: "Completed", badgeClass: "bg-emerald-100 text-emerald-800 border-emerald-200" },
+  { value: "CANCELLED", label: "Cancelled", badgeClass: "bg-rose-100 text-rose-800 border-rose-200" },
+];
 
 const SERVICE_STATUSES = [
-  "INITIATED",
-  "SUPPLIER_CONFIRMED",
-  "CUSTOMER_CONFIRMED",
-  "CONFIRMED",
-  "CANCELLED",
-] as const;
-
-const CAR_TYPES = ["SEDAN", "SUV", "MINIVAN", "VAN", "LUXURY", "COACH"] as const;
-const TRANSPORT_TYPES = ["ARRIVAL", "DEPARTURE", "INTERCITY", "HOURLY"] as const;
-const MEAL_PLANS = [
-  { value: "BB", label: "Bed & Breakfast" },
-  { value: "HB", label: "Half Board" },
-  { value: "FB", label: "Full Board" },
-  { value: "AI", label: "All Inclusive" },
+  { value: "INITIATED", label: "Initiated" },
+  { value: "SUPPLIER_CONFIRMED", label: "Supplier Confirmed" },
+  { value: "CUSTOMER_CONFIRMED", label: "Customer Confirmed" },
+  { value: "CONFIRMED", label: "Confirmed" },
+  { value: "CANCELLED", label: "Cancelled" },
 ];
+
+const CAR_TYPES = [
+  { value: "SEDAN", label: "Sedan" },
+  { value: "SUV", label: "SUV" },
+  { value: "MINIVAN", label: "Minivan" },
+  { value: "VAN", label: "Van" },
+  { value: "LUXURY", label: "Luxury" },
+  { value: "COACH", label: "Coach" },
+];
+
+const TRANSPORT_TYPES = [
+  { value: "ARRIVAL", label: "Arrival" },
+  { value: "DEPARTURE", label: "Departure" },
+  { value: "INTERCITY", label: "Intercity" },
+  { value: "HOURLY", label: "Hourly" },
+];
+
 const TRANSFER_OPTIONS = [
   { value: "WITHOUT_TRANSFER", label: "Without Transfer" },
-  { value: "SHARED", label: "Shared" },
-  { value: "PRIVATE", label: "Private" },
+  { value: "SHARED", label: "Shared Transfer" },
+  { value: "PRIVATE", label: "Private Transfer" },
 ];
+
+const MEAL_PLANS = [
+  { value: "BB", label: "Bed & Breakfast (BB)" },
+  { value: "HB", label: "Half Board (HB)" },
+  { value: "FB", label: "Full Board (FB)" },
+  { value: "AI", label: "All Inclusive (AI)" },
+];
+
 const COST_UNITS = [
   { value: "PER_PERSON", label: "Per Person" },
   { value: "PER_BOOKING", label: "Per Booking" },
 ];
-const PAYMENT_METHODS = ["CASH", "CARD", "BANK_TRANSFER", "WHATSAPP", "ONLINE"] as const;
+
+const PAYMENT_METHODS = [
+  { value: "CASH", label: "Cash" },
+  { value: "CARD", label: "Card" },
+  { value: "BANK_TRANSFER", label: "Bank Transfer" },
+  { value: "WHATSAPP", label: "WhatsApp" },
+  { value: "ONLINE", label: "Online" },
+];
+
+const PAYMENT_STATUSES = [
+  { value: "RECEIVED", label: "Received" },
+  { value: "PENDING", label: "Pending" },
+  { value: "REFUNDED", label: "Refunded" },
+];
+
 const INVOICE_TYPES = [
-  { value: "TAXABLE", label: "Taxable (VAT 5%)" },
+  { value: "TAXABLE", label: "Taxable Invoice 5%" },
   { value: "ZERO_RATED", label: "Zero Rated" },
   { value: "EXEMPT", label: "Exempt" },
 ];
-const ROLES: Role[] = ["ADMIN", "SENIOR_AGENT", "JUNIOR_AGENT", "ACCOUNTS"];
-const SUPPLIER_TYPES = ["TOUR", "HOTEL", "TRANSPORT", "VISA", "FLIGHT"];
-const PAX_TYPES = ["ADULT", "CHILD", "INFANT"];
-const GUEST_TITLES = ["Mr", "Mrs", "Miss", "Master", "Dr"];
 
-const SECTION_DEFS: {
-  id: SectionId;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-}[] = [
-  { id: "reservations", label: "Reservations", icon: ClipboardList },
-  { id: "new", label: "New Reservation", icon: Plus },
-  { id: "suppliers", label: "Suppliers", icon: Building2 },
-  { id: "employees", label: "Employees", icon: Users },
-  { id: "settings", label: "Settings", icon: Settings },
+const GUEST_TITLES = ["Mr", "Mrs", "Miss", "Master", "Dr"];
+const PAX_TYPES = [
+  { value: "ADULT", label: "Adult" },
+  { value: "CHILD", label: "Child" },
+  { value: "INFANT", label: "Infant" },
 ];
 
-type SectionId =
-  | "reservations"
-  | "new"
-  | "detail"
-  | "suppliers"
-  | "employees"
-  | "settings";
+const SUPPLIER_TYPES = [
+  { value: "TOUR", label: "Tour" },
+  { value: "HOTEL", label: "Hotel" },
+  { value: "TRANSPORT", label: "Transport" },
+  { value: "VISA", label: "Visa" },
+  { value: "FLIGHT", label: "Flight" },
+];
 
-/* ------------------------------------------------------------------ */
-/* Formatters                                                          */
-/* ------------------------------------------------------------------ */
+const YES_NO = [
+  { value: "YES", label: "Yes" },
+  { value: "NO", label: "No" },
+];
 
-function money(cur: string, value: number): string {
-  try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: cur || "AED",
-      maximumFractionDigits: 2,
-    }).format(value || 0);
-  } catch {
-    return `${value.toFixed(2)} ${cur}`;
-  }
+const COUNTRIES = [
+  "United Arab Emirates", "Saudi Arabia", "Qatar", "Kuwait", "Bahrain", "Oman",
+  "India", "Pakistan", "Bangladesh", "Sri Lanka", "Nepal", "China", "Japan",
+  "Singapore", "Malaysia", "Thailand", "Indonesia", "Philippines", "Vietnam",
+  "United Kingdom", "United States", "Canada", "Australia", "New Zealand",
+  "Germany", "France", "Italy", "Spain", "Netherlands", "Switzerland",
+  "Russia", "Turkey", "Egypt", "South Africa", "Nigeria", "Kenya",
+  "Brazil", "Argentina", "Mexico", "Other",
+];
+
+const SERVICE_TABS = [
+  { id: "home", label: "Home", icon: HomeIcon },
+  { id: "hotels", label: "Hotels", icon: HotelIcon },
+  { id: "tours", label: "Tours", icon: MapPin },
+  { id: "visas", label: "Visas", icon: Sticker },
+  { id: "flights", label: "Flights", icon: Plane },
+  { id: "transport", label: "Transport", icon: CreditCard },
+  { id: "extras", label: "Extras", icon: Sparkles },
+  { id: "payments", label: "Payments", icon: Banknote },
+] as const;
+
+type ServiceTabId = (typeof SERVICE_TABS)[number]["id"];
+
+/* ================================================================== */
+/* Helpers                                                            */
+/* ================================================================== */
+
+function statusLabel(status: string): string {
+  return BOOKING_STATUSES.find((s) => s.value === status)?.label ?? status;
 }
-
-function fmtDate(iso?: string | null, fmt = "MMM d, yyyy"): string {
-  if (!iso) return "—";
-  try {
-    return format(parseISO(iso), fmt);
-  } catch {
-    return "—";
-  }
-}
-
-function fmtDateTime(iso?: string | null): string {
-  if (!iso) return "—";
-  try {
-    return format(parseISO(iso), "MMM d, yyyy · HH:mm");
-  } catch {
-    return "—";
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/* Status helpers                                                      */
-/* ------------------------------------------------------------------ */
-
 function statusBadgeClass(status: string): string {
-  switch (status) {
-    case "PENDING":
-      return "bg-amber-500 text-white border-transparent";
-    case "SUPPLIER_PENDING":
-    case "SUPPLIER_CONFIRMED":
-      return "bg-sky-600 text-white border-transparent";
-    case "CUSTOMER_CONFIRMED":
-      return "bg-teal-600 text-white border-transparent";
-    case "CONFIRMED":
-      return "bg-emerald-600 text-white border-transparent";
-    case "COMPLETED":
-      return "bg-primary text-primary-foreground border-transparent";
-    case "CANCELLED":
-      return "bg-destructive text-white border-transparent";
-    case "INITIATED":
-      return "bg-slate-500 text-white border-transparent";
-    case "REFUNDED":
-    case "REFUND":
-      return "bg-orange-500 text-white border-transparent";
-    default:
-      return "bg-muted text-muted-foreground border-border";
+  return (
+    BOOKING_STATUSES.find((s) => s.value === status)?.badgeClass ??
+    "bg-muted text-muted-foreground border-border"
+  );
+}
+function money(cur: string, value: number): string {
+  const c = cur || "AED";
+  const v = Number.isFinite(value) ? value : 0;
+  return `${c} ${v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+function fmtDate(iso?: string | null, fmtStr = "MMM d, yyyy"): string {
+  if (!iso) return "—";
+  try {
+    return format(parseISO(iso), fmtStr);
+  } catch {
+    return "—";
   }
 }
+function fmtDateTime(iso?: string | null): string {
+  return fmtDate(iso, "MMM d, yyyy · h:mm a");
+}
+function toInputDate(iso?: string | null): string {
+  if (!iso) return "";
+  try {
+    return format(parseISO(iso), "yyyy-MM-dd");
+  } catch {
+    return "";
+  }
+}
+function toInputDateTime(iso?: string | null): string {
+  if (!iso) return "";
+  try {
+    return format(parseISO(iso), "yyyy-MM-dd'T'HH:mm");
+  } catch {
+    return "";
+  }
+}
+function num(v: unknown): number {
+  const n = typeof v === "number" ? v : parseFloat(String(v ?? "0"));
+  return Number.isFinite(n) ? n : 0;
+}
+function statusMetaFromList<T extends { value: string; label: string }>(
+  list: T[],
+  value: string,
+): T | undefined {
+  return list.find((s) => s.value === value);
+}
+
+/* ================================================================== */
+/* Small UI atoms                                                    */
+/* ================================================================== */
 
 function StatusBadge({ status }: { status: string }) {
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold tracking-wide whitespace-nowrap",
-        statusBadgeClass(status),
-      )}
+    <Badge
+      variant="outline"
+      className={cn("whitespace-nowrap font-medium", statusBadgeClass(status))}
     >
-      {status.replace(/_/g, " ")}
-    </span>
+      {statusLabel(status)}
+    </Badge>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Shared small UI helpers                                            */
-/* ------------------------------------------------------------------ */
-
-function ErrorState({
-  message,
-  onRetry,
-}: {
-  message: string;
-  onRetry?: () => void;
-}) {
+function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-destructive/30 bg-destructive/5 p-10 text-center">
-      <AlertCircle className="size-8 text-destructive" />
-      <div>
-        <p className="font-medium text-foreground">{message}</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Please try again in a moment.
-        </p>
-      </div>
+    <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-rose-200 bg-rose-50 p-8 text-center">
+      <AlertCircle className="size-8 text-rose-500" />
+      <p className="text-sm font-medium text-rose-700">{message}</p>
       {onRetry && (
-        <Button variant="outline" size="sm" onClick={onRetry}>
-          <RefreshCw className="size-4" /> Retry
+        <Button size="sm" variant="outline" onClick={onRetry}>
+          <RefreshCw className="mr-1.5 size-3.5" />
+          Try again
         </Button>
       )}
     </div>
@@ -292,35 +329,37 @@ function ErrorState({
 }
 
 function SectionTitle({
+  step,
   title,
   subtitle,
-  icon: Icon,
-  action,
+  right,
 }: {
+  step?: string;
   title: string;
   subtitle?: string;
-  icon: React.ComponentType<{ className?: string }>;
-  action?: React.ReactNode;
+  right?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div className="flex items-start justify-between gap-3 border-b border-border pb-3">
       <div className="flex items-start gap-3">
-        <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-          <Icon className="size-5" />
-        </div>
+        {step && (
+          <span className="mt-0.5 flex size-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+            {step}
+          </span>
+        )}
         <div>
-          <h2
-            className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl"
+          <h3
+            className="text-lg font-semibold tracking-tight text-foreground"
             style={{ fontFamily: "var(--font-display)" }}
           >
             {title}
-          </h2>
+          </h3>
           {subtitle && (
-            <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>
+            <p className="text-xs text-muted-foreground">{subtitle}</p>
           )}
         </div>
       </div>
-      {action}
+      {right}
     </div>
   );
 }
@@ -328,379 +367,570 @@ function SectionTitle({
 function Field({
   label,
   required,
-  children,
   hint,
+  children,
+  className,
 }: {
   label: string;
   required?: boolean;
-  children: React.ReactNode;
   hint?: string;
+  children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="space-y-1.5">
-      <Label className="text-xs font-medium text-muted-foreground">
+    <div className={cn("flex flex-col gap-1.5", className)}>
+      <label className="text-xs font-semibold text-foreground">
         {label}
-        {required && <span className="ml-0.5 text-destructive">*</span>}
-      </Label>
+        {required && <span className="ml-0.5 text-rose-500">*</span>}
+      </label>
       {children}
       {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Main component                                                     */
-/* ------------------------------------------------------------------ */
-
-export function AgencyDashboard({ onExit }: { onExit?: () => void }) {
-  const [section, setSection] = useState<SectionId>("reservations");
-  const [selectedReservationId, setSelectedReservationId] = useState<
-    string | null
-  >(null);
-
-  // Simulated logged-in employee role. In production this would come from
-  // a session. Junior agents cannot see net (cost) rates.
-  const [role, setRole] = useState<Role>("ADMIN");
-  const canSeeNet =
-    role === "ADMIN" || role === "SENIOR_AGENT" || role === "ACCOUNTS";
-
-  const openReservation = (id: string) => {
-    setSelectedReservationId(id);
-    setSection("detail");
-  };
-
-  const newReservation = () => {
-    setSelectedReservationId(null);
-    setSection("new");
-  };
-
+function LoadingBlock({ rows = 4 }: { rows?: number }) {
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex size-11 items-center justify-center rounded-xl bg-gold/15 text-gold">
-            <Briefcase className="size-5" />
-          </div>
-          <div>
-            <h2
-              className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl"
-              style={{ fontFamily: "var(--font-display)" }}
-            >
-              Agency Booking System
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              B2B reservations, services, suppliers & employees
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5">
-            <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-              View as
-            </span>
-            <Select value={role} onValueChange={(v) => setRole(v as Role)}>
-              <SelectTrigger className="h-7 w-36 border-0 px-1 text-xs font-semibold shadow-none focus:ring-0">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ROLES.map((r) => (
-                  <SelectItem key={r} value={r} className="text-xs">
-                    {r.replace(/_/g, " ")}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {onExit && (
-            <Button variant="outline" size="sm" onClick={onExit}>
-              <ArrowLeft className="size-4" />
-              <span className="hidden sm:inline">Back</span>
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Mobile section tabs */}
-      <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 no-scrollbar md:hidden">
-        {SECTION_DEFS.map((s) => {
-          const active =
-            s.id === section ||
-            (s.id === "reservations" && section === "detail");
-          return (
-            <button
-              key={s.id}
-              onClick={() => setSection(s.id)}
-              className={cn(
-                "flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-medium transition-all",
-                active
-                  ? "border-transparent bg-primary text-primary-foreground"
-                  : "border-border bg-card text-muted-foreground",
-              )}
-            >
-              <s.icon className={cn("size-3.5", active && "text-gold")} />
-              {s.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Desktop sidebar layout */}
-      <div className="flex gap-6">
-        <aside className="hidden w-56 shrink-0 md:block">
-          <nav className="sticky top-4 flex flex-col gap-1.5 rounded-xl border border-border/70 bg-card/40 p-3">
-            {SECTION_DEFS.map((s) => {
-              const active =
-                s.id === section ||
-                (s.id === "reservations" && section === "detail");
-              return (
-                <button
-                  key={s.id}
-                  onClick={() => setSection(s.id)}
-                  className={cn(
-                    "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
-                    active
-                      ? "bg-primary text-primary-foreground shadow-sm"
-                      : "text-foreground/80 hover:bg-accent hover:text-foreground",
-                  )}
-                >
-                  <s.icon
-                    className={cn(
-                      "size-4 shrink-0 transition-colors",
-                      active
-                        ? "text-gold"
-                        : "text-muted-foreground group-hover:text-foreground",
-                    )}
-                  />
-                  {s.label}
-                  {active && (
-                    <span className="ml-auto size-1.5 rounded-full bg-gold" />
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-        </aside>
-
-        <div className="min-w-0 flex-1">
-          {section === "reservations" && (
-            <ReservationsSection
-              onNew={newReservation}
-              onOpen={openReservation}
-            />
-          )}
-          {section === "new" && (
-            <NewReservationSection
-              canSeeNet={canSeeNet}
-              onCreated={(id) => openReservation(id)}
-              onCancel={() => setSection("reservations")}
-            />
-          )}
-          {section === "detail" && selectedReservationId && (
-            <ReservationDetailSection
-              reservationId={selectedReservationId}
-              canSeeNet={canSeeNet}
-              onBack={() => setSection("reservations")}
-            />
-          )}
-          {section === "suppliers" && <SuppliersSection />}
-          {section === "employees" && <EmployeesSection />}
-          {section === "settings" && <SettingsSection />}
-        </div>
-      </div>
+    <div className="space-y-2">
+      {Array.from({ length: rows }).map((_, i) => (
+        <Skeleton key={i} className="h-12 w-full" />
+      ))}
     </div>
   );
 }
 
 /* ================================================================== */
-/* RESERVATIONS LIST                                                   */
+/* Reusable API hooks                                                */
 /* ================================================================== */
 
-function ReservationsSection({
-  onNew,
-  onOpen,
+function useEmployees() {
+  const [employees, setEmployees] = useState<EmployeeT[]>([]);
+  const [loading, setLoading] = useState(true);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/agency/employees?active=1");
+      if (!res.ok) throw new Error("Failed to load employees");
+      const data = await res.json();
+      setEmployees(data.employees ?? []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  return { employees, loading, reload: load };
+}
+
+function useSuppliers(type?: string) {
+  const [suppliers, setSuppliers] = useState<SupplierT[]>([]);
+  const [loading, setLoading] = useState(true);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (type) params.set("type", type);
+      params.set("active", "1");
+      const res = await fetch(`/api/agency/suppliers?${params.toString()}`);
+      if (!res.ok) throw new Error("Failed to load suppliers");
+      const data = await res.json();
+      setSuppliers(data.suppliers ?? []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, [type]);
+  useEffect(() => {
+    load();
+  }, [load]);
+  return { suppliers, loading, reload: load };
+}
+
+interface ExperienceOption {
+  id: string;
+  title: string;
+  type: string;
+  price: number;
+  currency: string;
+}
+
+function useExperiences() {
+  const [experiences, setExperiences] = useState<ExperienceOption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/experiences?limit=200");
+      if (!res.ok) throw new Error("Failed to load experiences");
+      const data = await res.json();
+      setExperiences(
+        (data.experiences ?? []).map((e: any) => ({
+          id: e.id,
+          title: e.title,
+          type: e.type,
+          price: e.price,
+          currency: e.currency,
+        })),
+      );
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  return { experiences, loading, reload: load };
+}
+
+interface HotelOption {
+  id: string;
+  name: string;
+  pricePerNight: number;
+  currency: string;
+}
+
+function useHotelsCatalog() {
+  const [hotels, setHotels] = useState<HotelOption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/hotels?limit=200");
+      if (!res.ok) throw new Error("Failed to load hotels");
+      const data = await res.json();
+      setHotels(
+        (data.hotels ?? []).map((h: any) => ({
+          id: h.id,
+          name: h.name,
+          pricePerNight: h.pricePerNight,
+          currency: h.currency,
+        })),
+      );
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  return { hotels, loading, reload: load };
+}
+
+/* ================================================================== */
+/* Add-supplier inline dialog (used by Tours/Transport/Hotels forms) */
+/* ================================================================== */
+
+function SupplierAddDialog({
+  open,
+  onClose,
+  onCreated,
+  defaultType,
 }: {
-  onNew: () => void;
-  onOpen: (id: string) => void;
+  open: boolean;
+  onClose: () => void;
+  onCreated: (s: SupplierT) => void;
+  defaultType: string;
 }) {
+  const [form, setForm] = useState({
+    name: "",
+    type: defaultType,
+    contactPerson: "",
+    email: "",
+    phone: "",
+    whatsapp: "",
+    city: "",
+    country: "",
+    paymentTerms: "",
+    markupValue: "20",
+  });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setForm((f) => ({ ...f, type: defaultType, name: "", contactPerson: "", email: "", phone: "", whatsapp: "", city: "", country: "", paymentTerms: "", markupValue: "20" }));
+    }
+  }, [open, defaultType]);
+
+  async function submit() {
+    if (!form.name.trim()) {
+      toast.error("Supplier name is required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/agency/suppliers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      toast.success("Supplier added");
+      onCreated(data.supplier);
+      onClose();
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to add supplier");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle style={{ fontFamily: "var(--font-display)" }}>
+            Add New Supplier
+          </DialogTitle>
+          <DialogDescription>
+            Create a supplier record. They will appear in the supplier dropdown once saved.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Supplier Name" required>
+            <Input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              placeholder="e.g. Arabian Adventures"
+            />
+          </Field>
+          <Field label="Type">
+            <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {SUPPLIER_TYPES.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Contact Person">
+            <Input value={form.contactPerson} onChange={(e) => setForm({ ...form, contactPerson: e.target.value })} />
+          </Field>
+          <Field label="Email">
+            <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          </Field>
+          <Field label="Phone">
+            <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+          </Field>
+          <Field label="WhatsApp">
+            <Input value={form.whatsapp} onChange={(e) => setForm({ ...form, whatsapp: e.target.value })} />
+          </Field>
+          <Field label="City">
+            <Input value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} />
+          </Field>
+          <Field label="Country">
+            <Select value={form.country} onValueChange={(v) => setForm({ ...form, country: v })}>
+              <SelectTrigger><SelectValue placeholder="Select country" /></SelectTrigger>
+              <SelectContent>
+                {COUNTRIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Payment Terms">
+            <Input value={form.paymentTerms} onChange={(e) => setForm({ ...form, paymentTerms: e.target.value })} placeholder="e.g. 30 days credit" />
+          </Field>
+          <Field label="Default Markup %">
+            <Input type="number" value={form.markupValue} onChange={(e) => setForm({ ...form, markupValue: e.target.value })} />
+          </Field>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={submit} disabled={saving} className="bg-primary text-primary-foreground hover:bg-primary/90">
+            {saving ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Plus className="mr-1.5 size-4" />}
+            Add Supplier
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* Field-level "+" button that opens the SupplierAddDialog */
+function AddSupplierButton({
+  defaultType,
+  onCreated,
+}: {
+  defaultType: string;
+  onCreated: (s: SupplierT) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button
+        type="button"
+        size="icon"
+        variant="outline"
+        className="size-9 shrink-0 border-primary/30 text-primary hover:bg-primary/5"
+        onClick={() => setOpen(true)}
+        title="Add new supplier"
+      >
+        <Plus className="size-4" />
+      </Button>
+      <SupplierAddDialog
+        open={open}
+        onClose={() => setOpen(false)}
+        onCreated={onCreated}
+        defaultType={defaultType}
+      />
+    </>
+  );
+}
+
+/* ================================================================== */
+/* Main export                                                        */
+/* ================================================================== */
+
+export function AgencyDashboard({ onExit }: { onExit?: () => void }) {
+  const [activeReservationId, setActiveReservationId] = useState<string | null>(null);
+  const [listKey, setListKey] = useState(0);
+
+  const handleOpen = (id: string) => setActiveReservationId(id);
+  const handleBack = () => {
+    setActiveReservationId(null);
+    setListKey((k) => k + 1); // refresh list after edits
+  };
+
+  if (activeReservationId) {
+    return (
+      <ReservationDetail
+        reservationId={activeReservationId}
+        onBack={handleBack}
+        onExit={onExit}
+      />
+    );
+  }
+  return <BookingList onOpen={handleOpen} onExit={onExit} refreshKey={listKey} />;
+}
+
+/* ================================================================== */
+/* View 1 — Booking List                                             */
+/* ================================================================== */
+
+function BookingList({
+  onOpen,
+  onExit,
+  refreshKey,
+}: {
+  onOpen: (id: string) => void;
+  onExit?: () => void;
+  refreshKey: number;
+}) {
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("ALL");
   const [items, setItems] = useState<ReservationListItemT[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  const [search, setSearch] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 350);
-    return () => clearTimeout(t);
-  }, [search]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
-      if (statusFilter && statusFilter !== "ALL")
-        params.set("status", statusFilter);
-      if (debouncedSearch) params.set("search", debouncedSearch);
-      const res = await fetch(`/api/agency/reservations?${params.toString()}`, {
-        cache: "no-store",
-      });
+      if (search.trim()) params.set("search", search.trim());
+      if (status && status !== "ALL") params.set("status", status);
+      const res = await fetch(`/api/agency/reservations?${params.toString()}`);
       if (!res.ok) throw new Error("Failed to load reservations");
-      const data = (await res.json()) as { reservations: ReservationListItemT[] };
-      setItems(data.reservations);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      setError(msg);
-      toast.error("Could not load reservations", { description: msg });
+      const data = await res.json();
+      setItems(data.reservations ?? []);
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load reservations");
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, debouncedSearch]);
+  }, [search, status]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    const t = setTimeout(load, 250);
+    return () => clearTimeout(t);
+  }, [load, refreshKey]);
+
+  async function handleNewBooking() {
+    try {
+      const res = await fetch("/api/agency/reservations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerName: "New Customer",
+          customerEmail: `customer-${Date.now()}@wanderlust.travel`,
+          bookingStatus: "PENDING",
+          invoiceType: "TAXABLE",
+          termsAccepted: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      toast.success("New reservation created");
+      onOpen(data.reservation.id);
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to create reservation");
+    }
+  }
 
   return (
-    <div className="space-y-4">
-      <SectionTitle
-        title="Reservations"
-        subtitle="Master reservations with multi-service bookings."
-        icon={ClipboardList}
-        action={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={load}>
-              <RefreshCw className="size-4" /> Refresh
-            </Button>
-            <Button size="sm" onClick={onNew} className="bg-gold text-gold-foreground hover:bg-gold/90">
-              <Plus className="size-4" /> New Reservation
-            </Button>
+    <div className="flex flex-col gap-5">
+      {/* Page header */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <Briefcase className="size-3.5 text-gold" />
+            Agency Console
           </div>
-        }
-      />
+          <h2
+            className="mt-1 text-2xl font-bold tracking-tight text-foreground sm:text-3xl"
+            style={{ fontFamily: "var(--font-display)" }}
+          >
+            Reservations
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            {loading
+              ? "Loading reservations…"
+              : `${items.length} reservation${items.length === 1 ? "" : "s"} found`}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => load()}>
+            <RefreshCw className="mr-1.5 size-3.5" />
+            Refresh
+          </Button>
+          {onExit && (
+            <Button variant="ghost" size="sm" onClick={onExit}>
+              <ArrowLeft className="mr-1.5 size-3.5" />
+              Exit
+            </Button>
+          )}
+          <Button onClick={handleNewBooking} className="bg-primary text-primary-foreground hover:bg-primary/90">
+            <Plus className="mr-1.5 size-4" />
+            New Booking
+          </Button>
+        </div>
+      </div>
 
-      <Card className="rounded-xl">
-        <CardHeader className="pb-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-1 items-center gap-2">
-              <div className="relative flex-1 sm:max-w-sm">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search reference, invoice, customer name, email…"
-                  className="pl-9"
-                />
-              </div>
-            </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-44">
-                <SelectValue placeholder="All statuses" />
-              </SelectTrigger>
+      {/* Filter bar */}
+      <Card className="luxury-shadow">
+        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search by reference, customer name, email or phone…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+          <div className="w-full sm:w-64">
+            <Select value={status} onValueChange={setStatus}>
+              <SelectTrigger><SelectValue placeholder="All statuses" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">All statuses</SelectItem>
-                {RESERVATION_STATUSES.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {s.replace(/_/g, " ")}
-                  </SelectItem>
+                {BOOKING_STATUSES.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-        </CardHeader>
-        <CardContent className="px-0 sm:px-6">
-          {loading ? (
-            <div className="space-y-2 px-4 sm:px-0">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full rounded-md" />
-              ))}
-            </div>
-          ) : error ? (
-            <ErrorState message={error} onRetry={load} />
+        </CardContent>
+      </Card>
+
+      {/* Table */}
+      <Card className="luxury-shadow">
+        <CardContent className="p-0">
+          {error ? (
+            <div className="p-4"><ErrorState message={error} onRetry={load} /></div>
+          ) : loading ? (
+            <div className="p-4"><LoadingBlock rows={6} /></div>
           ) : items.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 p-10 text-center">
-              <ClipboardList className="size-8 text-muted-foreground" />
-              <p className="text-sm font-medium text-foreground">
-                No reservations found
-              </p>
+            <div className="flex flex-col items-center justify-center gap-3 p-12 text-center">
+              <div className="flex size-14 items-center justify-center rounded-full bg-muted">
+                <Search className="size-6 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-medium text-foreground">No reservations found</p>
               <p className="text-xs text-muted-foreground">
-                Try adjusting filters or create a new reservation.
+                Try adjusting your search or status filter, or create a new booking.
               </p>
-              <Button size="sm" onClick={onNew} className="mt-2 bg-gold text-gold-foreground hover:bg-gold/90">
-                <Plus className="size-4" /> New Reservation
-              </Button>
             </div>
           ) : (
-            <div className="max-h-[600px] overflow-y-auto">
+            <div className="overflow-x-auto">
               <Table>
-                <TableHeader className="sticky top-0 z-10 bg-card">
-                  <TableRow>
-                    <TableHead className="min-w-[140px]">Reference</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead className="hidden md:table-cell">Invoice</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="hidden lg:table-cell">Services</TableHead>
-                    <TableHead className="hidden lg:table-cell">Sale By</TableHead>
-                    <TableHead className="hidden md:table-cell">Date</TableHead>
-                    <TableHead className="text-right">Total</TableHead>
-                    <TableHead className="text-right">Balance</TableHead>
-                    <TableHead className="w-12" />
+                <TableHeader>
+                  <TableRow className="bg-muted/60 hover:bg-muted/60">
+                    <TableHead className="min-w-[160px]">Booking Number</TableHead>
+                    <TableHead className="min-w-[160px]">Customer Name</TableHead>
+                    <TableHead className="min-w-[200px]">Email Address</TableHead>
+                    <TableHead className="min-w-[140px]">Phone Number</TableHead>
+                    <TableHead className="min-w-[220px]">Activity Name</TableHead>
+                    <TableHead className="w-[80px] text-center">View</TableHead>
+                    <TableHead className="w-[120px] text-right">Open</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {items.map((r) => (
-                    <TableRow
-                      key={r.id}
-                      onClick={() => onOpen(r.id)}
-                      className="cursor-pointer hover:bg-accent/50"
-                    >
+                    <TableRow key={r.id} className="hover:bg-muted/40">
                       <TableCell>
-                        <div className="font-mono text-xs font-semibold text-primary">
-                          {r.reference}
+                        <div className="flex flex-col gap-1">
+                          <span className="font-mono text-sm font-semibold text-primary">
+                            {r.reference}
+                          </span>
+                          <StatusBadge status={r.bookingStatus} />
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="font-medium text-foreground">
-                          {r.customerName}
-                        </div>
-                        <div className="text-[11px] text-muted-foreground">
-                          {r.customerEmail}
+                        <div className="flex items-center gap-2">
+                          <User className="size-3.5 text-muted-foreground" />
+                          <span className="text-sm font-medium text-foreground">{r.customerName}</span>
                         </div>
                       </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <span className="font-mono text-[11px] text-muted-foreground">
-                          {r.invoiceNumber}
+                      <TableCell>
+                        <span className="text-sm text-muted-foreground">{r.customerEmail}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm text-muted-foreground">
+                          {r.customerPhone ?? "—"}
                         </span>
                       </TableCell>
                       <TableCell>
-                        <StatusBadge status={r.bookingStatus} />
+                        <span className="text-sm text-foreground">
+                          {r.firstServiceName ?? (
+                            <span className="text-muted-foreground italic">No services added</span>
+                          )}
+                        </span>
+                        {r.serviceCount > 0 && (
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            ({r.serviceCount} service{r.serviceCount === 1 ? "" : "s"})
+                          </span>
+                        )}
                       </TableCell>
-                      <TableCell className="hidden lg:table-cell text-xs">
-                        {r.serviceCount}
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell text-xs">
-                        {r.saleByName || "—"}
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
-                        {fmtDate(r.orderDate)}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">
-                        {money(r.currency, r.totalAmount)}
+                      <TableCell className="text-center">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="size-8 text-primary hover:bg-primary/10"
+                          onClick={() => onOpen(r.id)}
+                          title="View reservation"
+                        >
+                          <Eye className="size-4" />
+                        </Button>
                       </TableCell>
                       <TableCell className="text-right">
-                        <span
-                          className={cn(
-                            "font-semibold",
-                            r.balanceDue > 0
-                              ? "text-amber-600"
-                              : "text-emerald-600",
-                          )}
+                        <Button
+                          size="sm"
+                          variant="default"
+                          className="bg-primary text-primary-foreground hover:bg-primary/90"
+                          onClick={() => onOpen(r.id)}
                         >
-                          {money(r.currency, r.balanceDue)}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <ChevronRight className="size-4 text-muted-foreground" />
+                          Open
+                          <ChevronRight className="ml-1 size-3.5" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -714,4065 +944,2857 @@ function ReservationsSection({
   );
 }
 
-// Pull the icon import in here so the linter doesn't flag unused.
-/* (Search icon imported above) */
-
 /* ================================================================== */
-/* NEW RESERVATION (multi-step)                                       */
+/* View 2 — Reservation Detail (single scrollable page)             */
 /* ================================================================== */
 
-function NewReservationSection({
-  canSeeNet,
-  onCreated,
-  onCancel,
-}: {
-  canSeeNet: boolean;
-  onCreated: (id: string) => void;
-  onCancel: () => void;
-}) {
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
-  const [submitting, setSubmitting] = useState(false);
-
-  // Step 1 — customer + invoice
-  const [customerName, setCustomerName] = useState("");
-  const [customerEmail, setCustomerEmail] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [isGuest, setIsGuest] = useState(false);
-  const [orderDate, setOrderDate] = useState(
-    format(new Date(), "yyyy-MM-dd"),
-  );
-  const [bookingStatus, setBookingStatus] = useState<string>("PENDING");
-  const [saleById, setSaleById] = useState<string>("");
-  const [invoiceType, setInvoiceType] = useState<string>("TAXABLE");
-  const [currency, setCurrency] = useState("AED");
-  const [remarks, setRemarks] = useState("");
-
-  // Step 2 — guests
-  const [guests, setGuests] = useState<Partial<GuestT>[]>([
-    { title: "Mr", paxType: "ADULT" },
-  ]);
-
-  // Step 3 — services (held locally until save)
-  const [tours, setTours] = useState<Partial<TourBookingT>[]>([]);
-  const [transports, setTransports] = useState<Partial<TransportBookingT>[]>([]);
-  const [hotels, setHotels] = useState<Partial<HotelBookingT>[]>([]);
-
-  const [employees, setEmployees] = useState<EmployeeT[]>([]);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const res = await fetch("/api/agency/employees?active=1", {
-          cache: "no-store",
-        });
-        if (res.ok) {
-          const data = (await res.json()) as { employees: EmployeeT[] };
-          setEmployees(data.employees);
-        }
-      } catch {
-        /* ignore */
-      }
-    })();
-  }, []);
-
-  const canContinueStep1 =
-    customerName.trim().length > 0 && customerEmail.trim().length > 0;
-
-  async function handleSubmit() {
-    setSubmitting(true);
-    try {
-      // 1. Create reservation
-      const resRes = await fetch("/api/agency/reservations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customerName,
-          customerEmail,
-          customerPhone,
-          isGuest,
-          orderDate,
-          bookingStatus,
-          saleById: saleById || undefined,
-          invoiceType,
-          currency,
-          remarks,
-          termsAccepted: true,
-        }),
-      });
-      if (!resRes.ok) {
-        const err = await resRes.json().catch(() => ({}));
-        throw new Error(err.error || "Failed to create reservation");
-      }
-      const { reservation } = (await resRes.json()) as { reservation: ReservationT };
-      const reservationId = reservation.id;
-
-      // 2. Add guests
-      for (const g of guests) {
-        if (!g.fullName) continue;
-        await fetch(`/api/agency/reservations/${reservationId}/guests`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: g.title || "Mr",
-            fullName: g.fullName,
-            email: g.email || undefined,
-            phone: g.phone || undefined,
-            passportNumber: g.passportNumber || undefined,
-            paxType: g.paxType || "ADULT",
-            nationality: g.nationality || undefined,
-          }),
-        });
-      }
-
-      // 3. Add tours
-      for (const t of tours) {
-        if (!t.tourName) continue;
-        await fetch(`/api/agency/reservations/${reservationId}/tours`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(t),
-        });
-      }
-      for (const t of transports) {
-        if (!t.pickupLocation) continue;
-        await fetch(`/api/agency/reservations/${reservationId}/transports`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(t),
-        });
-      }
-      for (const h of hotels) {
-        if (!h.hotelName) continue;
-        await fetch(`/api/agency/reservations/${reservationId}/hotels`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(h),
-        });
-      }
-
-      toast.success("Reservation created", {
-        description: reservation.reference,
-      });
-      onCreated(reservationId);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      toast.error("Failed to create reservation", { description: msg });
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      <SectionTitle
-        title="New Reservation"
-        subtitle="Create a master reservation with guests and services."
-        icon={Plus}
-        action={
-          <Button variant="outline" size="sm" onClick={onCancel}>
-            <X className="size-4" /> Cancel
-          </Button>
-        }
-      />
-
-      {/* Stepper */}
-      <Card className="rounded-xl">
-        <CardContent className="py-4">
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
-            {[
-              { n: 1, label: "Customer & Invoice" },
-              { n: 2, label: "Guests" },
-              { n: 3, label: "Services" },
-              { n: 4, label: "Review & Save" },
-            ].map((s, i) => (
-              <div key={s.n} className="flex items-center gap-2">
-                {i > 0 && (
-                  <div
-                    className={cn(
-                      "h-px w-6 sm:w-12",
-                      step > s.n - 1 ? "bg-gold" : "bg-border",
-                    )}
-                  />
-                )}
-                <button
-                  onClick={() => setStep(s.n as 1 | 2 | 3 | 4)}
-                  className={cn(
-                    "flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-all",
-                    step === s.n
-                      ? "border-transparent bg-primary text-primary-foreground"
-                      : step > s.n
-                        ? "border-gold/40 bg-gold/10 text-gold-foreground"
-                        : "border-border text-muted-foreground",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "flex size-5 items-center justify-center rounded-full text-[10px]",
-                      step === s.n
-                        ? "bg-gold text-gold-foreground"
-                        : step > s.n
-                          ? "bg-gold text-gold-foreground"
-                          : "bg-muted",
-                    )}
-                  >
-                    {step > s.n ? <CheckCircle2 className="size-3" /> : s.n}
-                  </span>
-                  <span className="hidden sm:inline">{s.label}</span>
-                </button>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {step === 1 && (
-        <Card className="rounded-xl">
-          <CardHeader>
-            <CardTitle className="text-base">Customer & Invoice Details</CardTitle>
-            <CardDescription>Primary contact and billing metadata.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <Field label="Customer Name" required>
-                <Input
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="John Anderson"
-                />
-              </Field>
-              <Field label="Email" required>
-                <Input
-                  type="email"
-                  value={customerEmail}
-                  onChange={(e) => setCustomerEmail(e.target.value)}
-                  placeholder="john@example.com"
-                />
-              </Field>
-              <Field label="Phone">
-                <Input
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="+971 50 123 4567"
-                />
-              </Field>
-              <Field label="Guest Checkout">
-                <div className="flex h-9 items-center gap-2">
-                  <Switch checked={isGuest} onCheckedChange={setIsGuest} />
-                  <span className="text-xs text-muted-foreground">
-                    No customer record (walk-in)
-                  </span>
-                </div>
-              </Field>
-              <Field label="Order Date" required>
-                <Input
-                  type="date"
-                  value={orderDate}
-                  onChange={(e) => setOrderDate(e.target.value)}
-                />
-              </Field>
-              <Field label="Booking Status">
-                <Select value={bookingStatus} onValueChange={setBookingStatus}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {RESERVATION_STATUSES.map((s) => (
-                      <SelectItem key={s} value={s}>
-                        {s.replace(/_/g, " ")}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Sale By">
-                <Select value={saleById} onValueChange={setSaleById}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select agent…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {employees.map((e) => (
-                      <SelectItem key={e.id} value={e.id}>
-                        {e.name} ({e.role.replace(/_/g, " ")})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Invoice Type">
-                <Select value={invoiceType} onValueChange={setInvoiceType}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {INVOICE_TYPES.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>
-                        {t.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Currency">
-                <Select value={currency} onValueChange={setCurrency}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {["AED", "USD", "EUR", "GBP", "SAR"].map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-            </div>
-            <Field label="Remarks">
-              <Textarea
-                value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
-                placeholder="Optional notes about this reservation…"
-                rows={3}
-              />
-            </Field>
-          </CardContent>
-          <div className="flex justify-end gap-2 border-t border-border/70 p-4">
-            <Button onClick={() => setStep(2)} disabled={!canContinueStep1}>
-              Next: Guests <ChevronRight className="size-4" />
-            </Button>
-          </div>
-        </Card>
-      )}
-
-      {step === 2 && (
-        <GuestsEditor guests={guests} setGuests={setGuests} onContinue={() => setStep(3)} onBack={() => setStep(1)} />
-      )}
-
-      {step === 3 && (
-        <ServicesEditor
-          canSeeNet={canSeeNet}
-          tours={tours}
-          setTours={setTours}
-          transports={transports}
-          setTransports={setTransports}
-          hotels={hotels}
-          setHotels={setHotels}
-          onContinue={() => setStep(4)}
-          onBack={() => setStep(2)}
-        />
-      )}
-
-      {step === 4 && (
-        <Card className="rounded-xl">
-          <CardHeader>
-            <CardTitle className="text-base">Review & Save</CardTitle>
-            <CardDescription>Confirm the reservation details before creating.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="space-y-1.5 rounded-xl border border-border/70 bg-muted/30 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Customer</p>
-                <p className="font-semibold text-foreground">{customerName || "—"}</p>
-                <p className="text-xs text-muted-foreground">{customerEmail}</p>
-                {customerPhone && <p className="text-xs text-muted-foreground">{customerPhone}</p>}
-              </div>
-              <div className="space-y-1.5 rounded-xl border border-border/70 bg-muted/30 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Invoice</p>
-                <p className="text-sm">
-                  Status: <StatusBadge status={bookingStatus} />
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Order Date: {orderDate}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Invoice Type: {invoiceType.replace(/_/g, " ")}
-                </p>
-                <p className="text-xs text-muted-foreground">Currency: {currency}</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-xl border border-border/70 bg-muted/30 p-3 text-center">
-                <p className="text-xs text-muted-foreground">Guests</p>
-                <p className="text-2xl font-bold text-primary" style={{ fontFamily: "var(--font-display)" }}>
-                  {guests.filter((g) => g.fullName).length}
-                </p>
-              </div>
-              <div className="rounded-xl border border-border/70 bg-muted/30 p-3 text-center">
-                <p className="text-xs text-muted-foreground">Tours</p>
-                <p className="text-2xl font-bold text-primary" style={{ fontFamily: "var(--font-display)" }}>
-                  {tours.filter((t) => t.tourName).length}
-                </p>
-              </div>
-              <div className="rounded-xl border border-border/70 bg-muted/30 p-3 text-center">
-                <p className="text-xs text-muted-foreground">Transports</p>
-                <p className="text-2xl font-bold text-primary" style={{ fontFamily: "var(--font-display)" }}>
-                  {transports.filter((t) => t.pickupLocation).length}
-                </p>
-              </div>
-            </div>
-            {hotels.length > 0 && (
-              <div className="rounded-xl border border-border/70 bg-muted/30 p-3 text-center">
-                <p className="text-xs text-muted-foreground">Hotels: {hotels.filter((h) => h.hotelName).length}</p>
-              </div>
-            )}
-          </CardContent>
-          <div className="flex justify-between gap-2 border-t border-border/70 p-4">
-            <Button variant="outline" onClick={() => setStep(3)}>
-              <ArrowLeft className="size-4" /> Back
-            </Button>
-            <Button
-              onClick={handleSubmit}
-              disabled={submitting}
-              className="bg-gold text-gold-foreground hover:bg-gold/90"
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" /> Saving…
-                </>
-              ) : (
-                <>
-                  <Save className="size-4" /> Create Reservation
-                </>
-              )}
-            </Button>
-          </div>
-        </Card>
-      )}
-    </div>
-  );
-}
-
-/* ================================================================== */
-/* GUESTS EDITOR (used in new reservation flow)                       */
-/* ================================================================== */
-
-function GuestsEditor({
-  guests,
-  setGuests,
-  onContinue,
-  onBack,
-}: {
-  guests: Partial<GuestT>[];
-  setGuests: (g: Partial<GuestT>[]) => void;
-  onContinue: () => void;
-  onBack: () => void;
-}) {
-  const update = (i: number, key: keyof GuestT, value: string) => {
-    const next = [...guests];
-    next[i] = { ...next[i], [key]: value };
-    setGuests(next);
-  };
-  const remove = (i: number) => setGuests(guests.filter((_, idx) => idx !== i));
-  const add = () =>
-    setGuests([
-      ...guests,
-      { title: "Mr", paxType: "ADULT" },
-    ]);
-
-  return (
-    <Card className="rounded-xl">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-base">Guest List</CardTitle>
-            <CardDescription>Add one or more guests for this reservation.</CardDescription>
-          </div>
-          <Button size="sm" onClick={add} variant="outline">
-            <UserPlus className="size-4" /> Add Guest
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {guests.length === 0 && (
-          <p className="text-sm text-muted-foreground">No guests added yet.</p>
-        )}
-        {guests.map((g, i) => (
-          <div
-            key={i}
-            className="rounded-xl border border-border/70 bg-muted/20 p-3"
-          >
-            <div className="mb-2 flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground">
-                Guest #{i + 1}
-              </span>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="size-7 text-muted-foreground hover:text-destructive"
-                onClick={() => remove(i)}
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
-            </div>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <Field label="Title">
-                <Select
-                  value={(g.title as string) || "Mr"}
-                  onValueChange={(v) => update(i, "title", v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {GUEST_TITLES.map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {t}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Full Name" required>
-                <Input
-                  value={(g.fullName as string) || ""}
-                  onChange={(e) => update(i, "fullName", e.target.value)}
-                />
-              </Field>
-              <Field label="Email">
-                <Input
-                  type="email"
-                  value={(g.email as string) || ""}
-                  onChange={(e) => update(i, "email", e.target.value)}
-                />
-              </Field>
-              <Field label="Phone">
-                <Input
-                  value={(g.phone as string) || ""}
-                  onChange={(e) => update(i, "phone", e.target.value)}
-                />
-              </Field>
-              <Field label="Passport #">
-                <Input
-                  value={(g.passportNumber as string) || ""}
-                  onChange={(e) => update(i, "passportNumber", e.target.value)}
-                />
-              </Field>
-              <Field label="Pax Type">
-                <Select
-                  value={(g.paxType as string) || "ADULT"}
-                  onValueChange={(v) => update(i, "paxType", v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PAX_TYPES.map((p) => (
-                      <SelectItem key={p} value={p}>
-                        {p}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Nationality">
-                <Input
-                  value={(g.nationality as string) || ""}
-                  onChange={(e) => update(i, "nationality", e.target.value)}
-                />
-              </Field>
-            </div>
-          </div>
-        ))}
-      </CardContent>
-      <div className="flex justify-between gap-2 border-t border-border/70 p-4">
-        <Button variant="outline" onClick={onBack}>
-          <ArrowLeft className="size-4" /> Back
-        </Button>
-        <Button onClick={onContinue}>
-          Next: Services <ChevronRight className="size-4" />
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
-/* ================================================================== */
-/* SERVICES EDITOR (used in new reservation flow)                     */
-/* ================================================================== */
-
-function ServicesEditor({
-  canSeeNet,
-  tours,
-  setTours,
-  transports,
-  setTransports,
-  hotels,
-  setHotels,
-  onContinue,
-  onBack,
-}: {
-  canSeeNet: boolean;
-  tours: Partial<TourBookingT>[];
-  setTours: (t: Partial<TourBookingT>[]) => void;
-  transports: Partial<TransportBookingT>[];
-  setTransports: (t: Partial<TransportBookingT>[]) => void;
-  hotels: Partial<HotelBookingT>[];
-  setHotels: (h: Partial<HotelBookingT>[]) => void;
-  onContinue: () => void;
-  onBack: () => void;
-}) {
-  const [suppliers, setSuppliers] = useState<SupplierT[]>([]);
-  const [activeTab, setActiveTab] = useState("tours");
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const res = await fetch("/api/agency/suppliers?active=1", {
-          cache: "no-store",
-        });
-        if (res.ok) {
-          const data = (await res.json()) as { suppliers: SupplierT[] };
-          setSuppliers(data.suppliers);
-        }
-      } catch {
-        /* ignore */
-      }
-    })();
-  }, []);
-
-  return (
-    <Card className="rounded-xl">
-      <CardHeader>
-        <CardTitle className="text-base">Add Services</CardTitle>
-        <CardDescription>
-          Add tours, transports and hotels. Net rates {canSeeNet ? "visible" : "hidden (Junior Agent role)"}.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="tours">
-              <CalendarDays className="mr-1.5 size-3.5" /> Tours ({tours.length})
-            </TabsTrigger>
-            <TabsTrigger value="transports">
-              <Plane className="mr-1.5 size-3.5" /> Transport ({transports.length})
-            </TabsTrigger>
-            <TabsTrigger value="hotels">
-              <HotelIcon className="mr-1.5 size-3.5" /> Hotels ({hotels.length})
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="tours" className="mt-4 space-y-3">
-            {tours.map((t, i) => (
-              <TourFormCard
-                key={i}
-                index={i}
-                value={t}
-                canSeeNet={canSeeNet}
-                suppliers={suppliers}
-                onChange={(v) => {
-                  const next = [...tours];
-                  next[i] = v;
-                  setTours(next);
-                }}
-                onRemove={() => setTours(tours.filter((_, idx) => idx !== i))}
-              />
-            ))}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setTours([
-                  ...tours,
-                  {
-                    transferOption: "WITHOUT_TRANSFER",
-                    costUnit: "PER_PERSON",
-                    noOfAdults: 1,
-                    noOfChildren: 0,
-                    showOnVoucher: true,
-                    status: "INITIATED",
-                  },
-                ])
-              }
-            >
-              <Plus className="size-4" /> Add Tour
-            </Button>
-          </TabsContent>
-
-          <TabsContent value="transports" className="mt-4 space-y-3">
-            {transports.map((t, i) => (
-              <TransportFormCard
-                key={i}
-                index={i}
-                value={t}
-                canSeeNet={canSeeNet}
-                suppliers={suppliers}
-                onChange={(v) => {
-                  const next = [...transports];
-                  next[i] = v;
-                  setTransports(next);
-                }}
-                onRemove={() =>
-                  setTransports(transports.filter((_, idx) => idx !== i))
-                }
-              />
-            ))}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setTransports([
-                  ...transports,
-                  {
-                    carType: "SEDAN",
-                    noOfPax: 1,
-                    transportType: "ARRIVAL",
-                    showOnVoucher: true,
-                    status: "INITIATED",
-                  },
-                ])
-              }
-            >
-              <Plus className="size-4" /> Add Transport
-            </Button>
-          </TabsContent>
-
-          <TabsContent value="hotels" className="mt-4 space-y-3">
-            {hotels.map((h, i) => (
-              <HotelFormCard
-                key={i}
-                index={i}
-                value={h}
-                canSeeNet={canSeeNet}
-                suppliers={suppliers}
-                onChange={(v) => {
-                  const next = [...hotels];
-                  next[i] = v;
-                  setHotels(next);
-                }}
-                onRemove={() => setHotels(hotels.filter((_, idx) => idx !== i))}
-              />
-            ))}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setHotels([
-                  ...hotels,
-                  {
-                    mealPlan: "BB",
-                    noOfRooms: 1,
-                    noOfAdults: 1,
-                    noOfChildren: 0,
-                    showOnVoucher: true,
-                    status: "INITIATED",
-                  },
-                ])
-              }
-            >
-              <Plus className="size-4" /> Add Hotel
-            </Button>
-          </TabsContent>
-        </Tabs>
-      </CardContent>
-      <div className="flex justify-between gap-2 border-t border-border/70 p-4">
-        <Button variant="outline" onClick={onBack}>
-          <ArrowLeft className="size-4" /> Back
-        </Button>
-        <Button onClick={onContinue}>
-          Next: Review <ChevronRight className="size-4" />
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
-/* ================================================================== */
-/* RESERVATION DETAIL                                                  */
-/* ================================================================== */
-
-function ReservationDetailSection({
+function ReservationDetail({
   reservationId,
-  canSeeNet,
   onBack,
+  onExit,
 }: {
   reservationId: string;
-  canSeeNet: boolean;
   onBack: () => void;
+  onExit?: () => void;
 }) {
   const [reservation, setReservation] = useState<ReservationT | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [suppliers, setSuppliers] = useState<SupplierT[]>([]);
-  const [employees, setEmployees] = useState<EmployeeT[]>([]);
-  const [editMode, setEditMode] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-
-  // Editable fields
-  const [editName, setEditName] = useState("");
-  const [editEmail, setEditEmail] = useState("");
-  const [editPhone, setEditPhone] = useState("");
-  const [editStatus, setEditStatus] = useState("PENDING");
-  const [editInvoiceType, setEditInvoiceType] = useState("TAXABLE");
-  const [editSaleById, setEditSaleById] = useState("");
-  const [editRemarks, setEditRemarks] = useState("");
+  const [activeTab, setActiveTab] = useState<ServiceTabId>("home");
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/agency/reservations/${reservationId}`, {
-        cache: "no-store",
-      });
+      const res = await fetch(`/api/agency/reservations/${reservationId}`);
       if (!res.ok) throw new Error("Failed to load reservation");
-      const data = (await res.json()) as { reservation: ReservationT };
+      const data = await res.json();
       setReservation(data.reservation);
-      setEditName(data.reservation.customerName);
-      setEditEmail(data.reservation.customerEmail);
-      setEditPhone(data.reservation.customerPhone ?? "");
-      setEditStatus(data.reservation.bookingStatus);
-      setEditInvoiceType(data.reservation.invoiceType);
-      setEditSaleById(data.reservation.saleById ?? "");
-      setEditRemarks(data.reservation.remarks ?? "");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      setError(msg);
-      toast.error("Could not load reservation", { description: msg });
+    } catch (e: any) {
+      setError(e.message ?? "Failed to load reservation");
     } finally {
       setLoading(false);
     }
   }, [reservationId]);
 
   useEffect(() => {
-    void load();
+    load();
   }, [load]);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        const [sRes, eRes] = await Promise.all([
-          fetch("/api/agency/suppliers?active=1", { cache: "no-store" }),
-          fetch("/api/agency/employees?active=1", { cache: "no-store" }),
-        ]);
-        if (sRes.ok) {
-          const d = (await sRes.json()) as { suppliers: SupplierT[] };
-          setSuppliers(d.suppliers);
-        }
-        if (eRes.ok) {
-          const d = (await eRes.json()) as { employees: EmployeeT[] };
-          setEmployees(d.employees);
-        }
-      } catch {
-        /* ignore */
-      }
-    })();
-  }, []);
-
-  async function saveEdit() {
-    try {
-      const res = await fetch(`/api/agency/reservations/${reservationId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          customerName: editName,
-          customerEmail: editEmail,
-          customerPhone: editPhone,
-          bookingStatus: editStatus,
-          invoiceType: editInvoiceType,
-          saleById: editSaleById || undefined,
-          remarks: editRemarks,
-        }),
-      });
-      if (!res.ok) throw new Error("Failed to update");
-      toast.success("Reservation updated");
-      setEditMode(false);
-      void load();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      toast.error("Update failed", { description: msg });
-    }
-  }
-
-  async function deleteReservation() {
-    try {
-      const res = await fetch(`/api/agency/reservations/${reservationId}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) throw new Error("Failed to delete");
-      toast.success("Reservation deleted");
-      onBack();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      toast.error("Delete failed", { description: msg });
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={onBack}>
-            <ArrowLeft className="size-4" /> Back
-          </Button>
-          <Skeleton className="h-8 w-48" />
-        </div>
-        <Skeleton className="h-32 rounded-xl" />
-        <Skeleton className="h-64 rounded-xl" />
-        <Skeleton className="h-64 rounded-xl" />
-      </div>
-    );
-  }
-
-  if (error || !reservation) {
-    return (
-      <div className="space-y-4">
-        <Button variant="ghost" size="sm" onClick={onBack}>
-          <ArrowLeft className="size-4" /> Back
-        </Button>
-        <ErrorState message={error ?? "Reservation not found"} onRetry={load} />
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-5">
+      {/* Top action bar */}
+      <div className="sticky top-0 z-20 -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-background/90 px-4 py-3 backdrop-blur-md sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={onBack}>
-            <ArrowLeft className="size-4" /> Back
+            <ArrowLeft className="mr-1.5 size-4" />
+            Back
           </Button>
-          <Separator orientation="vertical" className="hidden h-6 sm:block" />
-          <div>
+          <Separator orientation="vertical" className="hidden h-8 sm:block" />
+          <div className="hidden sm:block">
             <div className="flex items-center gap-2">
-              <h2
-                className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl"
-                style={{ fontFamily: "var(--font-display)" }}
-              >
-                {reservation.reference}
-              </h2>
-              <StatusBadge status={reservation.bookingStatus} />
+              <span className="font-mono text-sm font-bold text-primary">
+                {reservation?.reference ?? "—"}
+              </span>
+              {reservation && <StatusBadge status={reservation.bookingStatus} />}
             </div>
-            <p className="font-mono text-xs text-muted-foreground">
-              Invoice {reservation.invoiceNumber}
+            <p className="text-xs text-muted-foreground">
+              Invoice {reservation?.invoiceNumber ?? "—"} ·{" "}
+              {reservation ? money(reservation.currency, reservation.totalAmount) : ""}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={load}>
-            <RefreshCw className="size-4" /> Refresh
+          <Button variant="outline" size="sm" onClick={() => load()}>
+            <RefreshCw className="mr-1.5 size-3.5" />
+            Reload
           </Button>
-          {editMode ? (
-            <>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setEditMode(false);
-                  // Reset
-                  setEditName(reservation.customerName);
-                  setEditEmail(reservation.customerEmail);
-                  setEditPhone(reservation.customerPhone ?? "");
-                  setEditStatus(reservation.bookingStatus);
-                  setEditInvoiceType(reservation.invoiceType);
-                  setEditSaleById(reservation.saleById ?? "");
-                  setEditRemarks(reservation.remarks ?? "");
-                }}
-              >
-                <X className="size-4" /> Cancel
-              </Button>
-              <Button size="sm" onClick={saveEdit} className="bg-gold text-gold-foreground hover:bg-gold/90">
-                <Save className="size-4" /> Save
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button size="sm" variant="outline" onClick={() => setEditMode(true)}>
-                <Pencil className="size-4" /> Edit
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                onClick={() => setDeleteOpen(true)}
-              >
-                <Trash2 className="size-4" /> Delete
-              </Button>
-            </>
+          {onExit && (
+            <Button variant="ghost" size="sm" onClick={onExit}>
+              Exit
+            </Button>
           )}
         </div>
       </div>
 
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete reservation?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete <b>{reservation.reference}</b> and all
-              its tours, transports, hotels, guests and payments. This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={deleteReservation}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {error ? (
+        <ErrorState message={error} onRetry={load} />
+      ) : loading || !reservation ? (
+        <div className="space-y-4">
+          <Skeleton className="h-32 w-full" />
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-96 w-full" />
+        </div>
+      ) : (
+        <>
+          {/* Section A — Reservation Details */}
+          <ReservationDetailsSection
+            reservation={reservation}
+            onUpdated={(r) => setReservation(r)}
+          />
 
-      {/* Header summary card */}
-      <Card className="rounded-xl luxury-shadow">
-        <CardContent className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 lg:grid-cols-4 sm:p-6">
-          <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Customer</p>
-            {editMode ? (
-              <div className="space-y-1.5">
-                <Input value={editName} onChange={(e) => setEditName(e.target.value)} />
-                <Input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="Email" />
-                <Input value={editPhone} onChange={(e) => setEditPhone(e.target.value)} placeholder="Phone" />
+          {/* Section B — Guests Table */}
+          <GuestsSection
+            reservation={reservation}
+            onUpdated={(r) => setReservation(r)}
+          />
+
+          {/* Section C — Service Tabs */}
+          <Card className="luxury-shadow">
+            <CardHeader className="border-b border-border bg-muted/30 p-0">
+              <div className="flex flex-wrap items-center gap-1 p-2">
+                {SERVICE_TABS.map((tab) => {
+                  const Icon = tab.icon;
+                  const active = activeTab === tab.id;
+                  const count =
+                    tab.id === "tours"
+                      ? reservation.tours.length
+                      : tab.id === "hotels"
+                        ? reservation.hotels.length
+                        : tab.id === "transport"
+                          ? reservation.transports.length
+                          : tab.id === "payments"
+                            ? reservation.payments.length
+                            : 0;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={cn(
+                        "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                        active
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-foreground hover:bg-muted",
+                      )}
+                    >
+                      <Icon className="size-4" />
+                      <span>{tab.label}</span>
+                      {count > 0 && (
+                        <span
+                          className={cn(
+                            "rounded-full px-1.5 py-0.5 text-[10px] font-bold",
+                            active
+                              ? "bg-primary-foreground/20 text-primary-foreground"
+                              : "bg-muted text-muted-foreground",
+                          )}
+                        >
+                          {count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
-            ) : (
-              <>
-                <p className="font-semibold text-foreground">{reservation.customerName}</p>
-                <p className="text-xs text-muted-foreground">{reservation.customerEmail}</p>
-                {reservation.customerPhone && (
-                  <p className="text-xs text-muted-foreground">{reservation.customerPhone}</p>
-                )}
-              </>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Order Date</p>
-            <p className="font-medium text-foreground">{fmtDate(reservation.orderDate)}</p>
-            <p className="text-xs text-muted-foreground">Sale By: {reservation.saleBy?.name ?? "—"}</p>
-          </div>
-
-          <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Booking Status</p>
-            {editMode ? (
-              <Select value={editStatus} onValueChange={setEditStatus}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {RESERVATION_STATUSES.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {s.replace(/_/g, " ")}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <StatusBadge status={reservation.bookingStatus} />
-            )}
-            {editMode ? (
-              <div className="space-y-1.5 pt-1">
-                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sale By</p>
-                <Select value={editSaleById} onValueChange={setEditSaleById}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="—" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {employees.map((e) => (
-                      <SelectItem key={e.id} value={e.id}>
-                        {e.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Invoice Type</p>
-            {editMode ? (
-              <Select value={editInvoiceType} onValueChange={setEditInvoiceType}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {INVOICE_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            ) : (
-              <p className="font-medium text-foreground">
-                {reservation.invoiceType.replace(/_/g, " ")}
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground">Currency: {reservation.currency}</p>
-          </div>
-
-          {editMode && (
-            <div className="space-y-1.5 sm:col-span-2 lg:col-span-4">
-              <Field label="Remarks">
-                <Textarea
-                  value={editRemarks}
-                  onChange={(e) => setEditRemarks(e.target.value)}
-                  rows={3}
-                />
-              </Field>
-            </div>
-          )}
-          {!editMode && reservation.remarks && (
-            <div className="sm:col-span-2 lg:col-span-4">
-              <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Remarks</p>
-              <p className="mt-1 rounded-md bg-muted/40 p-2 text-sm text-foreground">
-                {reservation.remarks}
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Financial summary */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <SummaryStat label="Sub-total" value={money(reservation.currency, reservation.subTotal)} />
-        <SummaryStat label="VAT (5%)" value={money(reservation.currency, reservation.vatAmount)} />
-        <SummaryStat
-          label="Total"
-          value={money(reservation.currency, reservation.totalAmount)}
-          accent="gold"
-        />
-        <SummaryStat
-          label="Paid"
-          value={money(reservation.currency, reservation.amountPaid)}
-          accent="green"
-        />
-        <SummaryStat
-          label="Balance Due"
-          value={money(reservation.currency, reservation.balanceDue)}
-          accent={reservation.balanceDue > 0 ? "amber" : "green"}
-        />
-      </div>
-
-      {/* Tabbed detail: Guests / Tours / Transport / Hotels / Payments */}
-      <ReservationTabs
-        reservation={reservation}
-        canSeeNet={canSeeNet}
-        suppliers={suppliers}
-        onChanged={load}
-      />
+            </CardHeader>
+            <CardContent className="p-0">
+              {activeTab === "home" && <HomeTab reservation={reservation} />}
+              {activeTab === "tours" && (
+                <ToursTab reservation={reservation} onUpdated={(r) => setReservation(r)} />
+              )}
+              {activeTab === "hotels" && (
+                <HotelsTab reservation={reservation} onUpdated={(r) => setReservation(r)} />
+              )}
+              {activeTab === "transport" && (
+                <TransportTab reservation={reservation} onUpdated={(r) => setReservation(r)} />
+              )}
+              {activeTab === "payments" && (
+                <PaymentsTab reservation={reservation} onUpdated={(r) => setReservation(r)} />
+              )}
+              {activeTab === "visas" && <ComingSoonTab title="Visas" icon={Sticker} />}
+              {activeTab === "flights" && <ComingSoonTab title="Flights" icon={Plane} />}
+              {activeTab === "extras" && <ComingSoonTab title="Extras" icon={Sparkles} />}
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
+  );
+}
+
+/* ================================================================== */
+/* Coming Soon placeholder                                           */
+/* ================================================================== */
+
+function ComingSoonTab({ title, icon: Icon }: { title: string; icon: any }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 p-12 text-center">
+      <div className="flex size-14 items-center justify-center rounded-full bg-muted text-muted-foreground">
+        <Icon className="size-6" />
+      </div>
+      <p className="text-sm font-medium text-foreground">{title} — Coming soon</p>
+      <p className="max-w-md text-xs text-muted-foreground">
+        This module is not yet implemented in the current build. Existing data for
+        Tours, Hotels, Transport and Payments is fully manageable via the
+        corresponding tabs.
+      </p>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* Section A — Reservation Details                                   */
+/* ================================================================== */
+
+function ReservationDetailsSection({
+  reservation,
+  onUpdated,
+}: {
+  reservation: ReservationT;
+  onUpdated: (r: ReservationT) => void;
+}) {
+  const { employees } = useEmployees();
+  const [form, setForm] = useState({
+    customerName: reservation.customerName,
+    customerEmail: reservation.customerEmail,
+    customerPhone: reservation.customerPhone ?? "",
+    isGuest: reservation.isGuest,
+    orderDate: toInputDate(reservation.orderDate),
+    invoiceDate: toInputDate(reservation.invoiceDate),
+    bookingStatus: reservation.bookingStatus,
+    saleById: reservation.saleById ?? "",
+    invoiceType: reservation.invoiceType,
+    remarks: reservation.remarks ?? "",
+    termsAccepted: reservation.termsAccepted,
+  });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setForm({
+      customerName: reservation.customerName,
+      customerEmail: reservation.customerEmail,
+      customerPhone: reservation.customerPhone ?? "",
+      isGuest: reservation.isGuest,
+      orderDate: toInputDate(reservation.orderDate),
+      invoiceDate: toInputDate(reservation.invoiceDate),
+      bookingStatus: reservation.bookingStatus,
+      saleById: reservation.saleById ?? "",
+      invoiceType: reservation.invoiceType,
+      remarks: reservation.remarks ?? "",
+      termsAccepted: reservation.termsAccepted,
+    });
+  }, [reservation]);
+
+  async function save() {
+    if (!form.customerName.trim() || !form.customerEmail.trim()) {
+      toast.error("Customer name and email are required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/agency/reservations/${reservation.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to save");
+      toast.success("Reservation saved");
+      onUpdated(data.reservation);
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to save reservation");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="luxury-shadow">
+      <CardHeader className="gap-0 pb-3">
+        <SectionTitle
+          step="A"
+          title="Reservation Details"
+          subtitle="Master invoice & customer information"
+          right={
+            <Button
+              onClick={save}
+              disabled={saving}
+              className="bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              {saving ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Check className="mr-1.5 size-4" />}
+              Save Record
+            </Button>
+          }
+        />
+      </CardHeader>
+      <CardContent className="pt-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <Field label="Customer" required className="sm:col-span-2 lg:col-span-2 xl:col-span-2">
+            <div className="flex items-center gap-2">
+              <Input
+                value={form.customerName}
+                onChange={(e) => setForm({ ...form, customerName: e.target.value })}
+                placeholder="Customer name"
+              />
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                className="size-9 shrink-0 border-primary/30 text-primary hover:bg-primary/5"
+                title="Add new customer"
+                onClick={() => toast.info("Customer directory — coming soon")}
+              >
+                <UserPlus className="size-4" />
+              </Button>
+            </div>
+            <label className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
+              <Switch
+                checked={form.isGuest}
+                onCheckedChange={(v) => setForm({ ...form, isGuest: v })}
+              />
+              Guest checkout (no customer record)
+            </label>
+          </Field>
+
+          <Field label="Invoice #">
+            <Input value={reservation.invoiceNumber} readOnly className="bg-muted/50 font-mono" />
+          </Field>
+
+          <Field label="Reference #">
+            <Input value={reservation.reference} readOnly className="bg-muted/50 font-mono" />
+          </Field>
+
+          <Field label="Order Date">
+            <Input
+              type="date"
+              value={form.orderDate}
+              onChange={(e) => setForm({ ...form, orderDate: e.target.value })}
+            />
+          </Field>
+
+          <Field label="Invoice Date">
+            <Input
+              type="date"
+              value={form.invoiceDate}
+              onChange={(e) => setForm({ ...form, invoiceDate: e.target.value })}
+            />
+          </Field>
+
+          <Field label="Booking Status">
+            <Select value={form.bookingStatus} onValueChange={(v) => setForm({ ...form, bookingStatus: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {BOOKING_STATUSES.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+
+          <Field label="Sale By">
+            <Select value={form.saleById} onValueChange={(v) => setForm({ ...form, saleById: v })}>
+              <SelectTrigger><SelectValue placeholder="Select agent" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">— None —</SelectItem>
+                {employees.map((e) => (
+                  <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+
+          <Field label="Created By">
+            <Input
+              value={reservation.saleBy?.name ?? "System"}
+              readOnly
+              className="bg-muted/50"
+            />
+          </Field>
+
+          <Field label="Updated By">
+            <Input value={reservation.saleBy?.name ?? "System"} readOnly className="bg-muted/50" />
+          </Field>
+
+          <Field label="Invoice Type">
+            <Select value={form.invoiceType} onValueChange={(v) => setForm({ ...form, invoiceType: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {INVOICE_TYPES.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+
+          <Field label="Currency">
+            <Input value={reservation.currency} readOnly className="bg-muted/50" />
+          </Field>
+
+          <Field label="Customer Email" required>
+            <Input
+              type="email"
+              value={form.customerEmail}
+              onChange={(e) => setForm({ ...form, customerEmail: e.target.value })}
+            />
+          </Field>
+
+          <Field label="Customer Phone">
+            <Input
+              value={form.customerPhone}
+              onChange={(e) => setForm({ ...form, customerPhone: e.target.value })}
+            />
+          </Field>
+
+          <Field label="Remarks" className="sm:col-span-2 lg:col-span-3 xl:col-span-4">
+            <Textarea
+              rows={2}
+              value={form.remarks}
+              onChange={(e) => setForm({ ...form, remarks: e.target.value })}
+              placeholder="Internal remarks visible to agents only…"
+            />
+          </Field>
+
+          <div className="flex items-center gap-2 sm:col-span-2 lg:col-span-3 xl:col-span-4">
+            <Switch
+              checked={form.termsAccepted}
+              onCheckedChange={(v) => setForm({ ...form, termsAccepted: v })}
+            />
+            <span className="text-sm font-medium text-foreground">
+              Terms and Conditions accepted
+            </span>
+          </div>
+        </div>
+
+        {/* Financial summary */}
+        <Separator className="my-4" />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
+          <SummaryStat label="Subtotal" value={money(reservation.currency, reservation.subTotal)} />
+          <SummaryStat label="VAT (5%)" value={money(reservation.currency, reservation.vatAmount)} />
+          <SummaryStat label="Total" value={money(reservation.currency, reservation.totalAmount)} emphasized />
+          <SummaryStat label="Paid" value={money(reservation.currency, reservation.amountPaid)} positive />
+          <SummaryStat
+            label="Balance Due"
+            value={money(reservation.currency, reservation.balanceDue)}
+            warning={reservation.balanceDue > 0}
+          />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
 function SummaryStat({
   label,
   value,
-  accent = "default",
+  emphasized,
+  positive,
+  warning,
 }: {
   label: string;
   value: string;
-  accent?: "default" | "gold" | "green" | "amber";
+  emphasized?: boolean;
+  positive?: boolean;
+  warning?: boolean;
 }) {
   return (
-    <Card className="rounded-xl">
-      <CardContent className="p-3 sm:p-4">
-        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-          {label}
-        </p>
-        <p
-          className={cn(
-            "mt-1 text-lg font-bold tracking-tight sm:text-xl",
-            accent === "gold" && "gold-text",
-            accent === "green" && "text-emerald-600",
-            accent === "amber" && "text-amber-600",
-            accent === "default" && "text-foreground",
-          )}
-          style={
-            accent === "gold"
-              ? { fontFamily: "var(--font-display)" }
-              : undefined
-          }
-        >
-          {value}
-        </p>
-      </CardContent>
-    </Card>
+    <div
+      className={cn(
+        "rounded-md border p-3",
+        emphasized
+          ? "border-primary/30 bg-primary/5"
+          : warning
+            ? "border-amber-200 bg-amber-50"
+            : positive
+              ? "border-emerald-200 bg-emerald-50"
+              : "border-border bg-muted/30",
+      )}
+    >
+      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p
+        className={cn(
+          "mt-1 font-mono text-sm font-bold",
+          emphasized ? "text-primary" : warning ? "text-amber-700" : positive ? "text-emerald-700" : "text-foreground",
+        )}
+      >
+        {value}
+      </p>
+    </div>
   );
 }
 
 /* ================================================================== */
-/* Reservation Tabs (Guests / Tours / Transport / Hotels / Payments)   */
+/* Section B — Guests Table                                          */
 /* ================================================================== */
 
-function ReservationTabs({
-  reservation,
-  canSeeNet,
-  suppliers,
-  onChanged,
-}: {
-  reservation: ReservationT;
-  canSeeNet: boolean;
-  suppliers: SupplierT[];
-  onChanged: () => void;
-}) {
-  const [tab, setTab] = useState("tours");
-
-  const toursCount = reservation.tours.length;
-  const transportsCount = reservation.transports.length;
-  const hotelsCount = reservation.hotels.length;
-  const guestsCount = reservation.guests.length;
-  const paymentsCount = reservation.payments.length;
-
-  return (
-    <Tabs value={tab} onValueChange={setTab}>
-      <TabsList className="grid w-full grid-cols-2 sm:grid-cols-5">
-        <TabsTrigger value="tours">
-          <CalendarDays className="mr-1.5 size-3.5" /> Tours ({toursCount})
-        </TabsTrigger>
-        <TabsTrigger value="transports">
-          <Plane className="mr-1.5 size-3.5" /> Transport ({transportsCount})
-        </TabsTrigger>
-        <TabsTrigger value="hotels">
-          <HotelIcon className="mr-1.5 size-3.5" /> Hotels ({hotelsCount})
-        </TabsTrigger>
-        <TabsTrigger value="guests">
-          <Users className="mr-1.5 size-3.5" /> Guests ({guestsCount})
-        </TabsTrigger>
-        <TabsTrigger value="payments">
-          <Banknote className="mr-1.5 size-3.5" /> Payments ({paymentsCount})
-        </TabsTrigger>
-      </TabsList>
-
-      <TabsContent value="tours" className="mt-4">
-        <ToursTab
-          reservation={reservation}
-          canSeeNet={canSeeNet}
-          suppliers={suppliers}
-          onChanged={onChanged}
-        />
-      </TabsContent>
-      <TabsContent value="transports" className="mt-4">
-        <TransportsTab
-          reservation={reservation}
-          canSeeNet={canSeeNet}
-          suppliers={suppliers}
-          onChanged={onChanged}
-        />
-      </TabsContent>
-      <TabsContent value="hotels" className="mt-4">
-        <HotelsTab
-          reservation={reservation}
-          canSeeNet={canSeeNet}
-          suppliers={suppliers}
-          onChanged={onChanged}
-        />
-      </TabsContent>
-      <TabsContent value="guests" className="mt-4">
-        <GuestsTab reservation={reservation} onChanged={onChanged} />
-      </TabsContent>
-      <TabsContent value="payments" className="mt-4">
-        <PaymentsTab reservation={reservation} onChanged={onChanged} />
-      </TabsContent>
-    </Tabs>
-  );
+interface GuestRow {
+  tempId: string;
+  id?: string;
+  title: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  passportNumber: string;
+  paxType: string;
+  nationality: string;
 }
 
-/* ------------------------------------------------------------------ */
-/* Tours tab                                                          */
-/* ------------------------------------------------------------------ */
-
-function ToursTab({
+function GuestsSection({
   reservation,
-  canSeeNet,
-  suppliers,
-  onChanged,
+  onUpdated,
 }: {
   reservation: ReservationT;
-  canSeeNet: boolean;
-  suppliers: SupplierT[];
-  onChanged: () => void;
+  onUpdated: (r: ReservationT) => void;
 }) {
-  const [adding, setAdding] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [experiences, setExperiences] = useState<{ id: string; title: string }[]>([]);
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const res = await fetch("/api/experiences?limit=0", { cache: "no-store" });
-        if (res.ok) {
-          const d = (await res.json()) as { experiences: { id: string; title: string }[] };
-          setExperiences(d.experiences.map((e) => ({ id: e.id, title: e.title })));
-        }
-      } catch {
-        /* ignore */
-      }
-    })();
-  }, []);
-
-  const editing = reservation.tours.find((t) => t.id === editingId) ?? null;
-
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this tour booking?")) return;
-    try {
-      const res = await fetch(
-        `/api/agency/reservations/${reservation.id}/tours/${id}`,
-        { method: "DELETE" },
-      );
-      if (!res.ok) throw new Error("Failed to delete");
-      toast.success("Tour removed");
-      onChanged();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      toast.error("Delete failed", { description: msg });
-    }
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3
-          className="text-lg font-semibold text-foreground"
-          style={{ fontFamily: "var(--font-display)" }}
-        >
-          Tour Bookings
-        </h3>
-        <Button size="sm" onClick={() => setAdding(true)} className="bg-gold text-gold-foreground hover:bg-gold/90">
-          <Plus className="size-4" /> Add Tour
-        </Button>
-      </div>
-
-      {adding && (
-        <TourFormCard
-          index={-1}
-          value={{
-            transferOption: "WITHOUT_TRANSFER",
-            costUnit: "PER_PERSON",
-            noOfAdults: 1,
-            noOfChildren: 0,
-            showOnVoucher: true,
-            status: "INITIATED",
-            tourDate: new Date().toISOString(),
-          }}
-          canSeeNet={canSeeNet}
-          suppliers={suppliers}
-          experiences={experiences}
-          onSave={async (v) => {
-            try {
-              const res = await fetch(
-                `/api/agency/reservations/${reservation.id}/tours`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(v),
-                },
-              );
-              if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.error || "Failed");
-              }
-              toast.success("Tour added");
-              setAdding(false);
-              onChanged();
-            } catch (e) {
-              const msg = e instanceof Error ? e.message : "Unknown error";
-              toast.error("Add failed", { description: msg });
-            }
-          }}
-          onCancel={() => setAdding(false)}
-        />
-      )}
-
-      {editing && (
-        <TourFormCard
-          index={-1}
-          value={editing}
-          canSeeNet={canSeeNet}
-          suppliers={suppliers}
-          experiences={experiences}
-          onSave={async (v) => {
-            try {
-              const res = await fetch(
-                `/api/agency/reservations/${reservation.id}/tours/${editing.id}`,
-                {
-                  method: "PUT",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(v),
-                },
-              );
-              if (!res.ok) throw new Error("Failed");
-              toast.success("Tour updated");
-              setEditingId(null);
-              onChanged();
-            } catch (e) {
-              const msg = e instanceof Error ? e.message : "Unknown error";
-              toast.error("Update failed", { description: msg });
-            }
-          }}
-          onCancel={() => setEditingId(null)}
-        />
-      )}
-
-      {reservation.tours.length === 0 && !adding && (
-        <div className="rounded-xl border border-dashed border-border/70 p-6 text-center text-sm text-muted-foreground">
-          No tours booked yet. Click <b>Add Tour</b> to create one.
-        </div>
-      )}
-
-      {reservation.tours.map((t) => (
-        <Card key={t.id} className="rounded-xl">
-          <CardContent className="p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <h4 className="font-semibold text-foreground">{t.tourName}</h4>
-                  <StatusBadge status={t.status} />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {fmtDate(t.tourDate, "EEE, MMM d yyyy")} · {t.noOfAdults}A {t.noOfChildren}C ·{" "}
-                  {t.transferOption.replace(/_/g, " ").toLowerCase()}
-                  {t.supplierName ? ` · ${t.supplierName}` : ""}
-                  {t.confirmationNumber ? ` · Conf: ${t.confirmationNumber}` : ""}
-                </p>
-                {t.tourOption && (
-                  <p className="text-xs text-muted-foreground">Option: {t.tourOption}</p>
-                )}
-                {t.comments && (
-                  <p className="text-xs italic text-muted-foreground">{t.comments}</p>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="text-right">
-                  <p className="text-xs text-muted-foreground">Sell Total</p>
-                  <p className="font-semibold text-foreground">
-                    {money(reservation.currency, t.totalSell)}
-                  </p>
-                  {canSeeNet && (
-                    <p className="text-[10px] text-muted-foreground">
-                      Net: {money(reservation.currency, t.totalCost)}
-                    </p>
-                  )}
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-8 text-muted-foreground"
-                  onClick={() => setEditingId(t.id)}
-                >
-                  <Pencil className="size-3.5" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => handleDelete(t.id)}
-                >
-                  <Trash2 className="size-3.5" />
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Transports tab                                                     */
-/* ------------------------------------------------------------------ */
-
-function TransportsTab({
-  reservation,
-  canSeeNet,
-  suppliers,
-  onChanged,
-}: {
-  reservation: ReservationT;
-  canSeeNet: boolean;
-  suppliers: SupplierT[];
-  onChanged: () => void;
-}) {
-  const [adding, setAdding] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const editing = reservation.transports.find((t) => t.id === editingId) ?? null;
-
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this transport booking?")) return;
-    try {
-      const res = await fetch(
-        `/api/agency/reservations/${reservation.id}/transports/${id}`,
-        { method: "DELETE" },
-      );
-      if (!res.ok) throw new Error("Failed to delete");
-      toast.success("Transport removed");
-      onChanged();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      toast.error("Delete failed", { description: msg });
-    }
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3
-          className="text-lg font-semibold text-foreground"
-          style={{ fontFamily: "var(--font-display)" }}
-        >
-          Transport Bookings
-        </h3>
-        <Button size="sm" onClick={() => setAdding(true)} className="bg-gold text-gold-foreground hover:bg-gold/90">
-          <Plus className="size-4" /> Add Transport
-        </Button>
-      </div>
-
-      {adding && (
-        <TransportFormCard
-          index={-1}
-          value={{
-            carType: "SEDAN",
-            noOfPax: 1,
-            transportType: "ARRIVAL",
-            pickupDateTime: new Date().toISOString(),
-            showOnVoucher: true,
-            status: "INITIATED",
-          }}
-          canSeeNet={canSeeNet}
-          suppliers={suppliers}
-          onSave={async (v) => {
-            try {
-              const res = await fetch(
-                `/api/agency/reservations/${reservation.id}/transports`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(v),
-                },
-              );
-              if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.error || "Failed");
-              }
-              toast.success("Transport added");
-              setAdding(false);
-              onChanged();
-            } catch (e) {
-              const msg = e instanceof Error ? e.message : "Unknown error";
-              toast.error("Add failed", { description: msg });
-            }
-          }}
-          onCancel={() => setAdding(false)}
-        />
-      )}
-
-      {editing && (
-        <TransportFormCard
-          index={-1}
-          value={editing}
-          canSeeNet={canSeeNet}
-          suppliers={suppliers}
-          onSave={async (v) => {
-            try {
-              const res = await fetch(
-                `/api/agency/reservations/${reservation.id}/transports/${editing.id}`,
-                {
-                  method: "PUT",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(v),
-                },
-              );
-              if (!res.ok) throw new Error("Failed");
-              toast.success("Transport updated");
-              setEditingId(null);
-              onChanged();
-            } catch (e) {
-              const msg = e instanceof Error ? e.message : "Unknown error";
-              toast.error("Update failed", { description: msg });
-            }
-          }}
-          onCancel={() => setEditingId(null)}
-        />
-      )}
-
-      {reservation.transports.length === 0 && !adding && (
-        <div className="rounded-xl border border-dashed border-border/70 p-6 text-center text-sm text-muted-foreground">
-          No transport booked yet.
-        </div>
-      )}
-
-      {reservation.transports.map((t) => (
-        <Card key={t.id} className="rounded-xl">
-          <CardContent className="p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <h4 className="font-semibold text-foreground">
-                    {t.carType} · {t.transportType}
-                  </h4>
-                  <StatusBadge status={t.status} />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {fmtDateTime(t.pickupDateTime)} · {t.noOfPax} pax
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  <MapPin className="mr-1 inline size-3" />
-                  {t.pickupLocation} → {t.dropoffLocation}
-                </p>
-                {t.flightNumber && (
-                  <p className="text-xs text-muted-foreground">Flight: {t.flightNumber}</p>
-                )}
-                {t.supplierName && (
-                  <p className="text-xs text-muted-foreground">Supplier: {t.supplierName}</p>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="text-right">
-                  <p className="text-xs text-muted-foreground">Sell</p>
-                  <p className="font-semibold text-foreground">
-                    {money(reservation.currency, t.sellRate)}
-                  </p>
-                  {canSeeNet && (
-                    <p className="text-[10px] text-muted-foreground">
-                      Net: {money(reservation.currency, t.netRate)} · M:{" "}
-                      {money(reservation.currency, t.margin)}
-                    </p>
-                  )}
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-8 text-muted-foreground"
-                  onClick={() => setEditingId(t.id)}
-                >
-                  <Pencil className="size-3.5" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => handleDelete(t.id)}
-                >
-                  <Trash2 className="size-3.5" />
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Hotels tab                                                         */
-/* ------------------------------------------------------------------ */
-
-function HotelsTab({
-  reservation,
-  canSeeNet,
-  suppliers,
-  onChanged,
-}: {
-  reservation: ReservationT;
-  canSeeNet: boolean;
-  suppliers: SupplierT[];
-  onChanged: () => void;
-}) {
-  const [adding, setAdding] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [hotels, setHotels] = useState<{ id: string; name: string }[]>([]);
-  const editing = reservation.hotels.find((t) => t.id === editingId) ?? null;
-
-  useEffect(() => {
-    void (async () => {
-      try {
-        const res = await fetch("/api/hotels?limit=0", { cache: "no-store" });
-        if (res.ok) {
-          const d = (await res.json()) as { hotels: { id: string; name: string }[] };
-          setHotels(d.hotels.map((h) => ({ id: h.id, name: h.name })));
-        }
-      } catch {
-        /* ignore */
-      }
-    })();
-  }, []);
-
-  async function handleDelete(id: string) {
-    if (!confirm("Delete this hotel booking?")) return;
-    try {
-      const res = await fetch(
-        `/api/agency/reservations/${reservation.id}/hotels/${id}`,
-        { method: "DELETE" },
-      );
-      if (!res.ok) throw new Error("Failed to delete");
-      toast.success("Hotel removed");
-      onChanged();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      toast.error("Delete failed", { description: msg });
-    }
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3
-          className="text-lg font-semibold text-foreground"
-          style={{ fontFamily: "var(--font-display)" }}
-        >
-          Hotel Bookings
-        </h3>
-        <Button size="sm" onClick={() => setAdding(true)} className="bg-gold text-gold-foreground hover:bg-gold/90">
-          <Plus className="size-4" /> Add Hotel
-        </Button>
-      </div>
-
-      {adding && (
-        <HotelFormCard
-          index={-1}
-          value={{
-            mealPlan: "BB",
-            noOfRooms: 1,
-            noOfAdults: 1,
-            noOfChildren: 0,
-            showOnVoucher: true,
-            status: "INITIATED",
-            checkInDate: new Date().toISOString(),
-            checkOutDate: new Date(Date.now() + 86400000).toISOString(),
-          }}
-          canSeeNet={canSeeNet}
-          suppliers={suppliers}
-          catalogHotels={hotels}
-          onSave={async (v) => {
-            try {
-              const res = await fetch(
-                `/api/agency/reservations/${reservation.id}/hotels`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(v),
-                },
-              );
-              if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                throw new Error(err.error || "Failed");
-              }
-              toast.success("Hotel added");
-              setAdding(false);
-              onChanged();
-            } catch (e) {
-              const msg = e instanceof Error ? e.message : "Unknown error";
-              toast.error("Add failed", { description: msg });
-            }
-          }}
-          onCancel={() => setAdding(false)}
-        />
-      )}
-
-      {editing && (
-        <HotelFormCard
-          index={-1}
-          value={editing}
-          canSeeNet={canSeeNet}
-          suppliers={suppliers}
-          catalogHotels={hotels}
-          onSave={async (v) => {
-            try {
-              const res = await fetch(
-                `/api/agency/reservations/${reservation.id}/hotels/${editing.id}`,
-                {
-                  method: "PUT",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(v),
-                },
-              );
-              if (!res.ok) throw new Error("Failed");
-              toast.success("Hotel updated");
-              setEditingId(null);
-              onChanged();
-            } catch (e) {
-              const msg = e instanceof Error ? e.message : "Unknown error";
-              toast.error("Update failed", { description: msg });
-            }
-          }}
-          onCancel={() => setEditingId(null)}
-        />
-      )}
-
-      {reservation.hotels.length === 0 && !adding && (
-        <div className="rounded-xl border border-dashed border-border/70 p-6 text-center text-sm text-muted-foreground">
-          No hotels booked yet.
-        </div>
-      )}
-
-      {reservation.hotels.map((h) => (
-        <Card key={h.id} className="rounded-xl">
-          <CardContent className="p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <h4 className="font-semibold text-foreground">{h.hotelName}</h4>
-                  <StatusBadge status={h.status} />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {fmtDate(h.checkInDate)} → {fmtDate(h.checkOutDate)} · {h.nights} nights ·{" "}
-                  {h.noOfRooms}R {h.noOfAdults}A {h.noOfChildren}C
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {h.roomType} · {h.mealPlan}
-                  {h.supplierName ? ` · ${h.supplierName}` : ""}
-                  {h.confirmationNumber ? ` · Conf: ${h.confirmationNumber}` : ""}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="text-right">
-                  <p className="text-xs text-muted-foreground">Sell Total</p>
-                  <p className="font-semibold text-foreground">
-                    {money(reservation.currency, h.totalSell)}
-                  </p>
-                  {canSeeNet && (
-                    <p className="text-[10px] text-muted-foreground">
-                      Net: {money(reservation.currency, h.totalCost)}
-                    </p>
-                  )}
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-8 text-muted-foreground"
-                  onClick={() => setEditingId(h.id)}
-                >
-                  <Pencil className="size-3.5" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-8 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => handleDelete(h.id)}
-                >
-                  <Trash2 className="size-3.5" />
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Guests tab                                                         */
-/* ------------------------------------------------------------------ */
-
-function GuestsTab({
-  reservation,
-  onChanged,
-}: {
-  reservation: ReservationT;
-  onChanged: () => void;
-}) {
-  const [adding, setAdding] = useState(false);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Partial<GuestT>>({});
-
-  const editing = reservation.guests.find((g) => g.id === editId) ?? null;
-
-  function openAdd() {
-    setDraft({ title: "Mr", paxType: "ADULT" });
-    setAdding(true);
-    setEditId(null);
-  }
-
-  function openEdit(g: GuestT) {
-    setDraft(g);
-    setEditId(g.id);
-    setAdding(false);
-  }
-
-  function close() {
-    setAdding(false);
-    setEditId(null);
-    setDraft({});
-  }
-
-  async function save() {
-    try {
-      if (!draft.fullName) {
-        toast.error("Full name required");
-        return;
-      }
-      const url = editing
-        ? `/api/agency/reservations/${reservation.id}/guests/${editing.id}`
-        : `/api/agency/reservations/${reservation.id}/guests`;
-      const method = editing ? "PUT" : "POST";
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft),
-      });
-      if (!res.ok) throw new Error("Failed");
-      toast.success(editing ? "Guest updated" : "Guest added");
-      close();
-      onChanged();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      toast.error("Save failed", { description: msg });
-    }
-  }
-
-  async function remove(id: string) {
-    if (!confirm("Remove this guest?")) return;
-    try {
-      const res = await fetch(
-        `/api/agency/reservations/${reservation.id}/guests/${id}`,
-        { method: "DELETE" },
-      );
-      if (!res.ok) throw new Error("Failed");
-      toast.success("Guest removed");
-      onChanged();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      toast.error("Delete failed", { description: msg });
-    }
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3
-          className="text-lg font-semibold text-foreground"
-          style={{ fontFamily: "var(--font-display)" }}
-        >
-          Guest Manifest
-        </h3>
-        <Button size="sm" onClick={openAdd} className="bg-gold text-gold-foreground hover:bg-gold/90">
-          <UserPlus className="size-4" /> Add Guest
-        </Button>
-      </div>
-
-      {(adding || editing) && (
-        <Card className="rounded-xl border-gold/30 bg-gold/5">
-          <CardContent className="space-y-3 p-4">
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <Field label="Title">
-                <Select
-                  value={(draft.title as string) || "Mr"}
-                  onValueChange={(v) => setDraft({ ...draft, title: v })}
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {GUEST_TITLES.map((t) => (
-                      <SelectItem key={t} value={t}>{t}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Full Name" required>
-                <Input
-                  value={(draft.fullName as string) || ""}
-                  onChange={(e) => setDraft({ ...draft, fullName: e.target.value })}
-                />
-              </Field>
-              <Field label="Email">
-                <Input
-                  value={(draft.email as string) || ""}
-                  onChange={(e) => setDraft({ ...draft, email: e.target.value })}
-                />
-              </Field>
-              <Field label="Phone">
-                <Input
-                  value={(draft.phone as string) || ""}
-                  onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
-                />
-              </Field>
-              <Field label="Passport #">
-                <Input
-                  value={(draft.passportNumber as string) || ""}
-                  onChange={(e) =>
-                    setDraft({ ...draft, passportNumber: e.target.value })
-                  }
-                />
-              </Field>
-              <Field label="Pax Type">
-                <Select
-                  value={(draft.paxType as string) || "ADULT"}
-                  onValueChange={(v) => setDraft({ ...draft, paxType: v })}
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {PAX_TYPES.map((p) => (
-                      <SelectItem key={p} value={p}>{p}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Nationality">
-                <Input
-                  value={(draft.nationality as string) || ""}
-                  onChange={(e) =>
-                    setDraft({ ...draft, nationality: e.target.value })
-                  }
-                />
-              </Field>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={close}>
-                Cancel
-              </Button>
-              <Button size="sm" onClick={save} className="bg-gold text-gold-foreground hover:bg-gold/90">
-                <Save className="size-4" /> Save
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {reservation.guests.length === 0 && !adding && !editing && (
-        <div className="rounded-xl border border-dashed border-border/70 p-6 text-center text-sm text-muted-foreground">
-          No guests added yet.
-        </div>
-      )}
-
-      {reservation.guests.length > 0 && (
-        <Card className="rounded-xl">
-          <CardContent className="p-0 sm:p-0">
-            <div className="max-h-[500px] overflow-y-auto">
-              <Table>
-                <TableHeader className="sticky top-0 bg-card">
-                  <TableRow>
-                    <TableHead>Title</TableHead>
-                    <TableHead>Name</TableHead>
-                    <TableHead className="hidden md:table-cell">Email</TableHead>
-                    <TableHead className="hidden md:table-cell">Phone</TableHead>
-                    <TableHead className="hidden lg:table-cell">Passport</TableHead>
-                    <TableHead>Pax</TableHead>
-                    <TableHead className="hidden lg:table-cell">Nationality</TableHead>
-                    <TableHead className="w-20" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {reservation.guests.map((g) => (
-                    <TableRow key={g.id}>
-                      <TableCell className="text-xs">{g.title}</TableCell>
-                      <TableCell className="font-medium">{g.fullName}</TableCell>
-                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
-                        {g.email || "—"}
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
-                        {g.phone || "—"}
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell text-xs">
-                        {g.passportNumber || "—"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-[10px]">
-                          {g.paxType}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
-                        {g.nationality || "—"}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="size-7 text-muted-foreground"
-                            onClick={() => openEdit(g)}
-                          >
-                            <Pencil className="size-3" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="size-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                            onClick={() => remove(g.id)}
-                          >
-                            <Trash2 className="size-3" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Payments tab                                                       */
-/* ------------------------------------------------------------------ */
-
-function PaymentsTab({
-  reservation,
-  onChanged,
-}: {
-  reservation: ReservationT;
-  onChanged: () => void;
-}) {
-  const [adding, setAdding] = useState(false);
-  const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState<string>("CASH");
-  const [reference, setReference] = useState("");
-  const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [notes, setNotes] = useState("");
+  const [rows, setRows] = useState<GuestRow[]>([]);
   const [saving, setSaving] = useState(false);
 
-  async function save() {
-    const amt = Number(amount);
-    if (!(amt > 0)) {
-      toast.error("Amount must be greater than 0");
+  useEffect(() => {
+    setRows(
+      reservation.guests.map((g) => ({
+        tempId: g.id,
+        id: g.id,
+        title: g.title,
+        fullName: g.fullName,
+        email: g.email ?? "",
+        phone: g.phone ?? "",
+        passportNumber: g.passportNumber ?? "",
+        paxType: g.paxType,
+        nationality: g.nationality ?? "",
+      })),
+    );
+  }, [reservation.guests]);
+
+  function addRow() {
+    setRows((rs) => [
+      ...rs,
+      {
+        tempId: `new-${Date.now()}`,
+        title: "Mr",
+        fullName: "",
+        email: "",
+        phone: "",
+        passportNumber: "",
+        paxType: "ADULT",
+        nationality: "",
+      },
+    ]);
+  }
+
+  function updateRow(tempId: string, patch: Partial<GuestRow>) {
+    setRows((rs) => rs.map((r) => (r.tempId === tempId ? { ...r, ...patch } : r)));
+  }
+
+  function removeRow(tempId: string) {
+    setRows((rs) => rs.filter((r) => r.tempId !== tempId));
+  }
+
+  async function saveAll() {
+    const valid = rows.filter((r) => r.fullName.trim());
+    if (valid.length === 0) {
+      toast.error("Add at least one guest with a name");
       return;
     }
     setSaving(true);
     try {
-      const res = await fetch(
-        `/api/agency/reservations/${reservation.id}/payments`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            amount: amt,
-            paymentMethod: method,
-            reference,
-            paymentDate: date,
-            notes,
-          }),
-        },
+      // For simplicity: delete existing guests, then re-create all.
+      // This matches the "Save Record(s)" semantic in the screenshot.
+      await fetch(`/api/agency/reservations/${reservation.id}/guests`, {
+        method: "GET",
+      }); // ensure we have latest list (used in diff below)
+
+      const existing = reservation.guests;
+      const keptIds = new Set(valid.filter((r) => r.id).map((r) => r.id!));
+
+      // Delete removed
+      await Promise.all(
+        existing
+          .filter((g) => !keptIds.has(g.id))
+          .map((g) =>
+            fetch(`/api/agency/reservations/${reservation.id}/guests/${g.id}`, {
+              method: "DELETE",
+            }),
+          ),
       );
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || "Failed");
+
+      // Update existing + create new
+      for (const r of valid) {
+        const payload = {
+          title: r.title,
+          fullName: r.fullName,
+          email: r.email || null,
+          phone: r.phone || null,
+          passportNumber: r.passportNumber || null,
+          paxType: r.paxType,
+          nationality: r.nationality || null,
+        };
+        if (r.id) {
+          await fetch(`/api/agency/reservations/${reservation.id}/guests/${r.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+        } else {
+          await fetch(`/api/agency/reservations/${reservation.id}/guests`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+        }
       }
-      toast.success("Payment recorded");
-      setAdding(false);
-      setAmount("");
-      setReference("");
-      setNotes("");
-      onChanged();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      toast.error("Save failed", { description: msg });
+
+      toast.success(`Saved ${valid.length} guest${valid.length === 1 ? "" : "s"}`);
+
+      // Reload reservation
+      const res = await fetch(`/api/agency/reservations/${reservation.id}`);
+      const data = await res.json();
+      if (res.ok) onUpdated(data.reservation);
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to save guests");
     } finally {
       setSaving(false);
     }
   }
 
-  async function remove(id: string) {
-    if (!confirm("Delete this payment?")) return;
-    try {
-      const res = await fetch(
-        `/api/agency/reservations/${reservation.id}/payments/${id}`,
-        { method: "DELETE" },
-      );
-      if (!res.ok) throw new Error("Failed");
-      toast.success("Payment deleted");
-      onChanged();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      toast.error("Delete failed", { description: msg });
-    }
-  }
-
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3
-          className="text-lg font-semibold text-foreground"
-          style={{ fontFamily: "var(--font-display)" }}
-        >
-          Payments
-        </h3>
-        <Button size="sm" onClick={() => setAdding(true)} className="bg-gold text-gold-foreground hover:bg-gold/90">
-          <Plus className="size-4" /> Add Payment
-        </Button>
-      </div>
-
-      {adding && (
-        <Card className="rounded-xl border-gold/30 bg-gold/5">
-          <CardContent className="space-y-3 p-4">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-              <Field label="Amount" required>
-                <Input
-                  type="number"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0.00"
-                />
-              </Field>
-              <Field label="Method">
-                <Select value={method} onValueChange={setMethod}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {PAYMENT_METHODS.map((m) => (
-                      <SelectItem key={m} value={m}>
-                        {m.replace(/_/g, " ")}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field label="Reference">
-                <Input
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                  placeholder="TXN-XXXX"
-                />
-              </Field>
-              <Field label="Date">
-                <Input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                />
-              </Field>
-            </div>
-            <Field label="Notes">
-              <Input
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Optional"
-              />
-            </Field>
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setAdding(false)}>
-                Cancel
+    <Card className="luxury-shadow">
+      <CardHeader className="gap-0 pb-3">
+        <SectionTitle
+          step="B"
+          title="Guest(s) Details"
+          subtitle="Travellers associated with this reservation"
+          right={
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={addRow}
+                variant="outline"
+                className="border-primary/30 text-primary hover:bg-primary/5"
+              >
+                <Plus className="mr-1.5 size-4" />
+                Add New
               </Button>
-              <Button size="sm" onClick={save} disabled={saving} className="bg-gold text-gold-foreground hover:bg-gold/90">
-                {saving ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Save className="size-4" />
-                )}{" "}
-                Save Payment
+              <Button
+                onClick={saveAll}
+                disabled={saving}
+                className="bg-emerald-600 text-white hover:bg-emerald-700"
+              >
+                {saving ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Check className="mr-1.5 size-4" />}
+                Save Record(s)
               </Button>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {reservation.payments.length === 0 && !adding && (
-        <div className="rounded-xl border border-dashed border-border/70 p-6 text-center text-sm text-muted-foreground">
-          No payments recorded yet.
-        </div>
-      )}
-
-      {reservation.payments.length > 0 && (
-        <Card className="rounded-xl">
-          <CardContent className="p-0">
+          }
+        />
+      </CardHeader>
+      <CardContent className="pt-4">
+        {rows.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/20 p-8 text-center">
+            <Users className="size-6 text-muted-foreground" />
+            <p className="text-sm font-medium text-foreground">No guests added yet</p>
+            <p className="text-xs text-muted-foreground">Click "Add New" to add the first guest.</p>
+            <Button size="sm" onClick={addRow} className="mt-2 bg-primary text-primary-foreground hover:bg-primary/90">
+              <Plus className="mr-1.5 size-4" />
+              Add First Guest
+            </Button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
             <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead className="hidden md:table-cell">Reference</TableHead>
-                  <TableHead className="hidden lg:table-cell">Notes</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="w-12" />
+                <TableRow className="bg-muted/60 hover:bg-muted/60">
+                  <TableHead className="min-w-[110px]">Title</TableHead>
+                  <TableHead className="min-w-[180px]">Guest Name</TableHead>
+                  <TableHead className="min-w-[200px]">Email</TableHead>
+                  <TableHead className="min-w-[150px]">Phone</TableHead>
+                  <TableHead className="min-w-[160px]">Passport</TableHead>
+                  <TableHead className="min-w-[120px]">Pax Type</TableHead>
+                  <TableHead className="min-w-[180px]">Nationality</TableHead>
+                  <TableHead className="w-[60px] text-center"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {reservation.payments.map((p) => (
-                  <TableRow key={p.id}>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {fmtDate(p.paymentDate)}
+                {rows.map((row) => (
+                  <TableRow key={row.tempId}>
+                    <TableCell>
+                      <Select value={row.title} onValueChange={(v) => updateRow(row.tempId, { title: v })}>
+                        <SelectTrigger className="h-9 w-full min-w-[100px]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {GUEST_TITLES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-[10px]">
-                        {p.paymentMethod.replace(/_/g, " ")}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
-                      {p.reference || "—"}
-                    </TableCell>
-                    <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
-                      {p.notes || "—"}
-                    </TableCell>
-                    <TableCell className="text-right font-semibold text-emerald-600">
-                      +{money(reservation.currency, p.amount)}
+                      <Input
+                        className="h-9"
+                        value={row.fullName}
+                        onChange={(e) => updateRow(row.tempId, { fullName: e.target.value })}
+                        placeholder="Full name"
+                      />
                     </TableCell>
                     <TableCell>
+                      <Input
+                        className="h-9"
+                        type="email"
+                        value={row.email}
+                        onChange={(e) => updateRow(row.tempId, { email: e.target.value })}
+                        placeholder="email@example.com"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        className="h-9"
+                        value={row.phone}
+                        onChange={(e) => updateRow(row.tempId, { phone: e.target.value })}
+                        placeholder="+971…"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Input
+                        className="h-9"
+                        value={row.passportNumber}
+                        onChange={(e) => updateRow(row.tempId, { passportNumber: e.target.value })}
+                        placeholder=" Passport #"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Select value={row.paxType} onValueChange={(v) => updateRow(row.tempId, { paxType: v })}>
+                        <SelectTrigger className="h-9 w-full min-w-[110px]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {PAX_TYPES.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Select value={row.nationality} onValueChange={(v) => updateRow(row.tempId, { nationality: v })}>
+                        <SelectTrigger className="h-9 w-full min-w-[160px]"><SelectValue placeholder="Select" /></SelectTrigger>
+                        <SelectContent>
+                          {COUNTRIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    <TableCell className="text-center">
                       <Button
                         size="icon"
                         variant="ghost"
-                        className="size-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        onClick={() => remove(p.id)}
+                        className="size-8 text-rose-500 hover:bg-rose-50"
+                        onClick={() => removeRow(row.tempId)}
+                        title="Remove guest"
                       >
-                        <Trash2 className="size-3" />
+                        <Trash2 className="size-4" />
                       </Button>
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
-      )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ================================================================== */
+/* Home Tab — reservation summary                                    */
+/* ================================================================== */
+
+function HomeTab({ reservation }: { reservation: ReservationT }) {
+  return (
+    <div className="p-5">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2 space-y-4">
+          <div className="rounded-lg border border-border bg-muted/20 p-4">
+            <h4 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              Customer
+            </h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <DetailItem label="Name" value={reservation.customerName} icon={User} />
+              <DetailItem label="Email" value={reservation.customerEmail} icon={Info} />
+              <DetailItem label="Phone" value={reservation.customerPhone ?? "—"} icon={Phone} />
+              <DetailItem label="Guest checkout" value={reservation.isGuest ? "Yes" : "No"} icon={Users} />
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border bg-muted/20 p-4">
+            <h4 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              Services
+            </h4>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <ServiceCount label="Tours" count={reservation.tours.length} icon={MapPin} />
+              <ServiceCount label="Hotels" count={reservation.hotels.length} icon={HotelIcon} />
+              <ServiceCount label="Transport" count={reservation.transports.length} icon={CreditCard} />
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+            <h4 className="mb-3 text-sm font-semibold uppercase tracking-wider text-primary">
+              Invoice Summary
+            </h4>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Reference</span>
+                <span className="font-mono font-semibold text-foreground">{reservation.reference}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Invoice #</span>
+                <span className="font-mono font-semibold text-foreground">{reservation.invoiceNumber}</span>
+              </div>
+              <Separator className="my-2" />
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Subtotal</span>
+                <span className="font-mono text-foreground">{money(reservation.currency, reservation.subTotal)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">VAT</span>
+                <span className="font-mono text-foreground">{money(reservation.currency, reservation.vatAmount)}</span>
+              </div>
+              <Separator className="my-2" />
+              <div className="flex justify-between text-base font-bold">
+                <span className="text-foreground">Total</span>
+                <span className="font-mono text-primary">{money(reservation.currency, reservation.totalAmount)}</span>
+              </div>
+              <div className="flex justify-between text-emerald-700">
+                <span>Paid</span>
+                <span className="font-mono">{money(reservation.currency, reservation.amountPaid)}</span>
+              </div>
+              <div className="flex justify-between text-amber-700">
+                <span>Balance</span>
+                <span className="font-mono">{money(reservation.currency, reservation.balanceDue)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-border bg-muted/20 p-4">
+            <h4 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+              Timeline
+            </h4>
+            <div className="space-y-2 text-xs">
+              <DetailItem label="Order Date" value={fmtDate(reservation.orderDate)} icon={CalendarDays} />
+              <DetailItem label="Invoice Date" value={fmtDate(reservation.invoiceDate)} icon={CalendarDays} />
+              <DetailItem label="Created" value={fmtDateTime(reservation.createdAt)} icon={CalendarDays} />
+              <DetailItem label="Updated" value={fmtDateTime(reservation.updatedAt)} icon={CalendarDays} />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailItem({ label, value, icon: Icon }: { label: string; value: string; icon: any }) {
+  return (
+    <div className="flex items-center gap-2">
+      <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+      <div className="min-w-0">
+        <p className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</p>
+        <p className="truncate text-sm font-medium text-foreground">{value}</p>
+      </div>
+    </div>
+  );
+}
+
+function ServiceCount({ label, count, icon: Icon }: { label: string; count: number; icon: any }) {
+  return (
+    <div className="rounded-md border border-border bg-card p-3 text-center">
+      <Icon className="mx-auto size-5 text-primary" />
+      <p className="mt-1 text-2xl font-bold text-foreground">{count}</p>
+      <p className="text-xs text-muted-foreground">{label}</p>
     </div>
   );
 }
 
 /* ================================================================== */
-/* TOUR FORM CARD                                                     */
+/* Service Tab Header bar                                            */
 /* ================================================================== */
 
-interface TourFormProps {
-  index: number;
-  value: Partial<TourBookingT>;
-  canSeeNet: boolean;
-  suppliers: SupplierT[];
-  experiences?: { id: string; title: string }[];
-  onSave?: (v: Partial<TourBookingT>) => void;
-  onChange?: (v: Partial<TourBookingT>) => void;
-  onCancel?: () => void;
-  onRemove?: () => void;
+function ServiceFormHeader({
+  title,
+  updatedAt,
+  updatedBy,
+  onClose,
+}: {
+  title: string;
+  updatedAt?: string;
+  updatedBy?: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 bg-primary px-4 py-2.5 text-primary-foreground">
+      <h4
+        className="text-base font-semibold"
+        style={{ fontFamily: "var(--font-display)" }}
+      >
+        {title}
+      </h4>
+      <div className="flex items-center gap-3">
+        <span className="hidden text-xs text-primary-foreground/80 sm:inline">
+          Updated at: {updatedAt ? fmtDateTime(updatedAt) : "—"}
+          {updatedBy && <span> By: {updatedBy}</span>}
+        </span>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="size-7 text-primary-foreground hover:bg-primary-foreground/20"
+          onClick={onClose}
+          title="Close form"
+        >
+          <X className="size-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ServiceListHeader({
+  title,
+  subtitle,
+  onAdd,
+  addLabel,
+}: {
+  title: string;
+  subtitle?: string;
+  onAdd: () => void;
+  addLabel: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border bg-muted/30 px-4 py-3">
+      <div>
+        <h4
+          className="text-base font-semibold text-foreground"
+          style={{ fontFamily: "var(--font-display)" }}
+        >
+          {title}
+        </h4>
+        {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
+      </div>
+      <Button
+        onClick={onAdd}
+        className="bg-primary text-primary-foreground hover:bg-primary/90"
+      >
+        <Plus className="mr-1.5 size-4" />
+        {addLabel}
+      </Button>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* Tours Tab                                                          */
+/* ================================================================== */
+
+interface TourFormState {
+  id?: string;
+  tourId: string;
+  tourName: string;
+  tourOption: string;
+  transferOption: string;
+  pickupLocation: string;
+  tourDate: string;
+  pickupTime: string;
+  timeSlot: string;
+  noOfAdults: string;
+  noOfChildren: string;
+  supplierId: string;
+  confirmationNumber: string;
+  status: string;
+  comments: string;
+  costUnit: string;
+  adultCostRate: string;
+  childCostRate: string;
+  carCostRate: string;
+  adultSellRate: string;
+  childSellRate: string;
+  carSellRate: string;
+  showOnVoucher: boolean;
+}
+
+function emptyTourForm(): TourFormState {
+  return {
+    tourId: "",
+    tourName: "",
+    tourOption: "",
+    transferOption: "WITHOUT_TRANSFER",
+    pickupLocation: "",
+    tourDate: toInputDate(new Date().toISOString()),
+    pickupTime: "",
+    timeSlot: "",
+    noOfAdults: "1",
+    noOfChildren: "0",
+    supplierId: "",
+    confirmationNumber: "",
+    status: "INITIATED",
+    comments: "",
+    costUnit: "PER_PERSON",
+    adultCostRate: "0",
+    childCostRate: "0",
+    carCostRate: "0",
+    adultSellRate: "0",
+    childSellRate: "0",
+    carSellRate: "0",
+    showOnVoucher: true,
+  };
+}
+
+function tourFromBooking(t: TourBookingT): TourFormState {
+  return {
+    id: t.id,
+    tourId: t.tourId ?? "",
+    tourName: t.tourName,
+    tourOption: t.tourOption ?? "",
+    transferOption: t.transferOption,
+    pickupLocation: t.pickupLocation ?? "",
+    tourDate: toInputDate(t.tourDate),
+    pickupTime: t.pickupTime ?? "",
+    timeSlot: t.timeSlot ?? "",
+    noOfAdults: String(t.noOfAdults),
+    noOfChildren: String(t.noOfChildren),
+    supplierId: t.supplierId ?? "",
+    confirmationNumber: t.confirmationNumber ?? "",
+    status: t.status,
+    comments: t.comments ?? "",
+    costUnit: t.costUnit,
+    adultCostRate: String(t.adultCostRate),
+    childCostRate: String(t.childCostRate),
+    carCostRate: String(t.carCostRate),
+    adultSellRate: String(t.adultSellRate),
+    childSellRate: String(t.childSellRate),
+    carSellRate: String(t.carSellRate),
+    showOnVoucher: t.showOnVoucher,
+  };
+}
+
+function ToursTab({
+  reservation,
+  onUpdated,
+}: {
+  reservation: ReservationT;
+  onUpdated: (r: ReservationT) => void;
+}) {
+  const { experiences } = useExperiences();
+  const { suppliers, reload: reloadSuppliers } = useSuppliers("TOUR");
+  const [mode, setMode] = useState<"list" | "form">("list");
+  const [form, setForm] = useState<TourFormState>(emptyTourForm());
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<TourBookingT | null>(null);
+
+  function openAdd() {
+    setForm(emptyTourForm());
+    setMode("form");
+  }
+  function openEdit(t: TourBookingT) {
+    setForm(tourFromBooking(t));
+    setMode("form");
+  }
+
+  function selectTour(id: string) {
+    const exp = experiences.find((e) => e.id === id);
+    if (exp) {
+      setForm((f) => ({
+        ...f,
+        tourId: id,
+        tourName: exp.title,
+      }));
+    } else {
+      setForm((f) => ({ ...f, tourId: "" }));
+    }
+  }
+
+  async function save() {
+    if (!form.tourName.trim()) {
+      toast.error("Tour is required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        ...form,
+        noOfAdults: num(form.noOfAdults),
+        noOfChildren: num(form.noOfChildren),
+        adultCostRate: num(form.adultCostRate),
+        childCostRate: num(form.childCostRate),
+        carCostRate: num(form.carCostRate),
+        adultSellRate: num(form.adultSellRate),
+        childSellRate: num(form.childSellRate),
+        carSellRate: num(form.carSellRate),
+        tourDate: form.tourDate ? new Date(form.tourDate).toISOString() : null,
+      };
+      const url = form.id
+        ? `/api/agency/reservations/${reservation.id}/tours/${form.id}`
+        : `/api/agency/reservations/${reservation.id}/tours`;
+      const res = await fetch(url, {
+        method: form.id ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to save");
+      toast.success(form.id ? "Tour updated" : "Tour added");
+      // reload reservation
+      const r = await fetch(`/api/agency/reservations/${reservation.id}`);
+      const d = await r.json();
+      if (r.ok) onUpdated(d.reservation);
+      setMode("list");
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to save tour");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(t: TourBookingT) {
+    try {
+      const res = await fetch(`/api/agency/reservations/${reservation.id}/tours/${t.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete");
+      toast.success("Tour deleted");
+      const r = await fetch(`/api/agency/reservations/${reservation.id}`);
+      const d = await r.json();
+      if (r.ok) onUpdated(d.reservation);
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to delete tour");
+    } finally {
+      setConfirmDelete(null);
+    }
+  }
+
+  if (mode === "form") {
+    return (
+      <TourFormCard
+        form={form}
+        setForm={setForm}
+        experiences={experiences}
+        suppliers={suppliers}
+        onSupplierAdded={reloadSuppliers}
+        onSelectTour={selectTour}
+        onSave={save}
+        onCancel={() => setMode("list")}
+        saving={saving}
+        isEdit={!!form.id}
+        updatedAt={form.id ? reservation.tours.find((t) => t.id === form.id)?.updatedAt : undefined}
+      />
+    );
+  }
+
+  return (
+    <div>
+      <ServiceListHeader
+        title="Tour Bookings"
+        subtitle={`${reservation.tours.length} tour(s) on this reservation`}
+        onAdd={openAdd}
+        addLabel="Add Tour"
+      />
+      <div className="p-4">
+        {reservation.tours.length === 0 ? (
+          <EmptyServiceState
+            icon={MapPin}
+            message="No tours added yet"
+            hint="Click 'Add Tour' to create the first tour booking for this reservation."
+            cta={{ label: "Add Tour", onClick: openAdd }}
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/60 hover:bg-muted/60">
+                  <TableHead className="min-w-[220px]">Tour</TableHead>
+                  <TableHead className="min-w-[120px]">Date</TableHead>
+                  <TableHead className="min-w-[80px] text-center">Adults</TableHead>
+                  <TableHead className="min-w-[80px] text-center">Children</TableHead>
+                  <TableHead className="min-w-[120px]">Supplier</TableHead>
+                  <TableHead className="min-w-[120px]">Status</TableHead>
+                  <TableHead className="min-w-[110px] text-right">Sell Total</TableHead>
+                  <TableHead className="w-[100px] text-center">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {reservation.tours.map((t) => {
+                  const statusMeta = statusMetaFromList(SERVICE_STATUSES, t.status);
+                  return (
+                    <TableRow key={t.id} className="hover:bg-muted/40">
+                      <TableCell>
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-sm font-medium text-foreground">{t.tourName}</span>
+                          {t.tourOption && (
+                            <span className="text-xs text-muted-foreground">{t.tourOption}</span>
+                          )}
+                          {t.transferOption !== "WITHOUT_TRANSFER" && (
+                            <span className="text-xs text-muted-foreground">
+                              {TRANSFER_OPTIONS.find((o) => o.value === t.transferOption)?.label ?? t.transferOption}
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm text-foreground">{fmtDate(t.tourDate)}</span>
+                      </TableCell>
+                      <TableCell className="text-center text-sm">{t.noOfAdults}</TableCell>
+                      <TableCell className="text-center text-sm">{t.noOfChildren}</TableCell>
+                      <TableCell>
+                        <span className="text-sm text-foreground">{t.supplierName ?? "—"}</span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="whitespace-nowrap">
+                          {statusMeta?.label ?? t.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm font-semibold text-foreground">
+                        {money(reservation.currency, t.totalSell)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-8 text-primary hover:bg-primary/10"
+                            onClick={() => openEdit(t)}
+                            title="Edit tour"
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-8 text-rose-500 hover:bg-rose-50"
+                            onClick={() => setConfirmDelete(t)}
+                            title="Delete tour"
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </div>
+
+      <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete tour booking?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove “{confirmDelete?.tourName}” from this reservation.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-rose-600 text-white hover:bg-rose-700"
+              onClick={() => confirmDelete && remove(confirmDelete)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
 }
 
 function TourFormCard({
-  index,
-  value,
-  canSeeNet,
-  suppliers,
+  form,
+  setForm,
   experiences,
-  onSave,
-  onChange,
-  onCancel,
-  onRemove,
-}: TourFormProps) {
-  const isEditing = Boolean(onSave);
-
-  function update<K extends keyof TourBookingT>(key: K, v: TourBookingT[K]) {
-    onChange?.({ ...value, [key]: v });
-  }
-
-  // Live pricing preview
-  const pricing = useMemo(() => {
-    return calcTourPricing({
-      costUnit: (value.costUnit as string) || "PER_PERSON",
-      adultCostRate: Number(value.adultCostRate ?? 0),
-      childCostRate: Number(value.childCostRate ?? 0),
-      carCostRate: Number(value.carCostRate ?? 0),
-      adultSellRate: Number(value.adultSellRate ?? 0),
-      childSellRate: Number(value.childSellRate ?? 0),
-      carSellRate: Number(value.carSellRate ?? 0),
-      noOfAdults: Number(value.noOfAdults ?? 0),
-      noOfChildren: Number(value.noOfChildren ?? 0),
-    });
-  }, [value]);
-
-  return (
-    <div className="rounded-xl border border-border/70 bg-card p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h4 className="text-sm font-semibold text-foreground">
-          {isEditing
-            ? index === -1
-              ? "New Tour Booking"
-              : `Edit Tour`
-            : `Tour #${index + 1}`}
-        </h4>
-        <div className="flex items-center gap-1">
-          {onCancel && (
-            <Button size="sm" variant="ghost" onClick={onCancel}>
-              <X className="size-3.5" /> Cancel
-            </Button>
-          )}
-          {onRemove && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-              onClick={onRemove}
-            >
-              <Trash2 className="size-3.5" />
-            </Button>
-          )}
-          {onSave && (
-            <Button size="sm" onClick={() => onSave?.(value)} className="bg-gold text-gold-foreground hover:bg-gold/90">
-              <Save className="size-3.5" /> Save
-            </Button>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Field label="Tour" required>
-          {experiences && experiences.length > 0 ? (
-            <Select
-              value={(value.tourId as string) || ""}
-              onValueChange={(v) => {
-                const exp = experiences.find((e) => e.id === v);
-                update("tourId", v);
-                if (exp) update("tourName", exp.title);
-              }}
-            >
-              <SelectTrigger><SelectValue placeholder="Select from catalog…" /></SelectTrigger>
-              <SelectContent>
-                {experiences.map((e) => (
-                  <SelectItem key={e.id} value={e.id}>
-                    {e.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : null}
-          <Input
-            className={experiences && experiences.length > 0 ? "mt-2" : ""}
-            value={(value.tourName as string) || ""}
-            onChange={(e) => update("tourName", e.target.value)}
-            placeholder="Or enter tour name"
-          />
-        </Field>
-        <Field label="Tour Option">
-          <Input
-            value={(value.tourOption as string) || ""}
-            onChange={(e) => update("tourOption", e.target.value)}
-            placeholder="e.g. 1 Day 2 Park Pass"
-          />
-        </Field>
-        <Field label="Transfer Option">
-          <Select
-            value={(value.transferOption as string) || "WITHOUT_TRANSFER"}
-            onValueChange={(v) => update("transferOption", v)}
-          >
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {TRANSFER_OPTIONS.map((t) => (
-                <SelectItem key={t.value} value={t.value}>
-                  {t.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Pickup Location">
-          <Input
-            value={(value.pickupLocation as string) || ""}
-            onChange={(e) => update("pickupLocation", e.target.value)}
-            placeholder="Hotel lobby, address…"
-          />
-        </Field>
-        <Field label="Tour Date" required>
-          <Input
-            type="date"
-            value={
-              value.tourDate
-                ? format(parseISO(value.tourDate), "yyyy-MM-dd")
-                : format(new Date(), "yyyy-MM-dd")
-            }
-            onChange={(e) =>
-              update("tourDate", new Date(e.target.value).toISOString())
-            }
-          />
-        </Field>
-        <Field label="Pickup Time">
-          <Input
-            type="time"
-            value={(value.pickupTime as string) || ""}
-            onChange={(e) => update("pickupTime", e.target.value)}
-          />
-        </Field>
-        <Field label="Time Slot">
-          <Input
-            value={(value.timeSlot as string) || ""}
-            onChange={(e) => update("timeSlot", e.target.value)}
-            placeholder="Morning / Evening"
-          />
-        </Field>
-        <Field label="No of Adults">
-          <Input
-            type="number"
-            min={0}
-            value={Number(value.noOfAdults ?? 0)}
-            onChange={(e) => update("noOfAdults", Math.max(0, Number(e.target.value)))}
-          />
-        </Field>
-        <Field label="No of Children">
-          <Input
-            type="number"
-            min={0}
-            value={Number(value.noOfChildren ?? 0)}
-            onChange={(e) => update("noOfChildren", Math.max(0, Number(e.target.value)))}
-          />
-        </Field>
-        <Field label="Supplier">
-          <Select
-            value={(value.supplierId as string) || ""}
-            onValueChange={(v) => update("supplierId", v)}
-          >
-            <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
-            <SelectContent>
-              {suppliers
-                .filter((s) => s.type === "TOUR" || s.type === "TRANSPORT")
-                .map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Confirmation #">
-          <Input
-            value={(value.confirmationNumber as string) || ""}
-            onChange={(e) => update("confirmationNumber", e.target.value)}
-            placeholder="AA-XXXX"
-          />
-        </Field>
-        <Field label="Status">
-          <Select
-            value={(value.status as string) || "INITIATED"}
-            onValueChange={(v) => update("status", v)}
-          >
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {SERVICE_STATUSES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s.replace(/_/g, " ")}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-      </div>
-
-      {/* Pricing */}
-      <div className="mt-4 rounded-lg border border-border/70 bg-muted/30 p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Pricing
-          </p>
-          <div className="flex items-center gap-2">
-            <Label className="text-[11px] text-muted-foreground">Show on Voucher</Label>
-            <Switch
-              checked={value.showOnVoucher ?? true}
-              onCheckedChange={(v) => update("showOnVoucher", v)}
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <Field label="Cost Unit">
-            <Select
-              value={(value.costUnit as string) || "PER_PERSON"}
-              onValueChange={(v) => update("costUnit", v)}
-            >
-              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {COST_UNITS.map((c) => (
-                  <SelectItem key={c.value} value={c.value}>
-                    {c.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          {canSeeNet && (
-            <>
-              <Field label="Adult Cost Rate">
-                <Input
-                  type="number"
-                  className="h-8 text-xs"
-                  value={Number(value.adultCostRate ?? 0)}
-                  onChange={(e) => update("adultCostRate", Number(e.target.value))}
-                />
-              </Field>
-              <Field label="Child Cost Rate">
-                <Input
-                  type="number"
-                  className="h-8 text-xs"
-                  value={Number(value.childCostRate ?? 0)}
-                  onChange={(e) => update("childCostRate", Number(e.target.value))}
-                />
-              </Field>
-              <Field label="Car Cost Rate">
-                <Input
-                  type="number"
-                  className="h-8 text-xs"
-                  value={Number(value.carCostRate ?? 0)}
-                  onChange={(e) => update("carCostRate", Number(e.target.value))}
-                />
-              </Field>
-            </>
-          )}
-          <Field label="Adult Sell Rate">
-            <Input
-              type="number"
-              className="h-8 text-xs"
-              value={Number(value.adultSellRate ?? 0)}
-              onChange={(e) => update("adultSellRate", Number(e.target.value))}
-            />
-          </Field>
-          <Field label="Child Sell Rate">
-            <Input
-              type="number"
-              className="h-8 text-xs"
-              value={Number(value.childSellRate ?? 0)}
-              onChange={(e) => update("childSellRate", Number(e.target.value))}
-            />
-          </Field>
-          <Field label="Car Sell Rate">
-            <Input
-              type="number"
-              className="h-8 text-xs"
-              value={Number(value.carSellRate ?? 0)}
-              onChange={(e) => update("carSellRate", Number(e.target.value))}
-            />
-          </Field>
-        </div>
-
-        {/* Calculated totals */}
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {canSeeNet && (
-            <div className="rounded-md bg-card p-2 text-center">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                Net Total
-              </p>
-              <p className="text-sm font-semibold text-foreground">
-                {pricing.totalCost.toFixed(2)}
-              </p>
-            </div>
-          )}
-          <div className="rounded-md bg-gold/10 p-2 text-center">
-            <p className="text-[10px] uppercase tracking-wider text-gold-foreground/70">
-              Sell Total
-            </p>
-            <p className="text-sm font-bold text-gold-foreground">
-              {pricing.totalSell.toFixed(2)}
-            </p>
-          </div>
-          {canSeeNet && (
-            <div className="rounded-md bg-card p-2 text-center">
-              <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                Margin
-              </p>
-              <p className="text-sm font-semibold text-emerald-600">
-                {(pricing.totalSell - pricing.totalCost).toFixed(2)}
-              </p>
-            </div>
-          )}
-          <div className="rounded-md bg-card p-2 text-center">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Pax
-            </p>
-            <p className="text-sm font-semibold text-foreground">
-              {Number(value.noOfAdults ?? 0) + Number(value.noOfChildren ?? 0)}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <Field label="Comments">
-        <Textarea
-          value={(value.comments as string) || ""}
-          onChange={(e) => update("comments", e.target.value)}
-          rows={2}
-          className="mt-2"
-          placeholder="Optional supplier notes…"
-        />
-      </Field>
-    </div>
-  );
-}
-
-/* ================================================================== */
-/* TRANSPORT FORM CARD                                                */
-/* ================================================================== */
-
-interface TransportFormProps {
-  index: number;
-  value: Partial<TransportBookingT>;
-  canSeeNet: boolean;
-  suppliers: SupplierT[];
-  onSave?: (v: Partial<TransportBookingT>) => void;
-  onChange?: (v: Partial<TransportBookingT>) => void;
-  onCancel?: () => void;
-  onRemove?: () => void;
-}
-
-function TransportFormCard({
-  index,
-  value,
-  canSeeNet,
   suppliers,
+  onSupplierAdded,
+  onSelectTour,
   onSave,
-  onChange,
   onCancel,
-  onRemove,
-}: TransportFormProps) {
-  const isEditing = Boolean(onSave);
-
-  function update<K extends keyof TransportBookingT>(key: K, v: TransportBookingT[K]) {
-    onChange?.({ ...value, [key]: v });
-  }
-
-  const netRate = Number(value.netRate ?? 0);
-  const sellRate = Number(value.sellRate ?? 0);
-  const margin = sellRate - netRate;
-
-  const pickupDate = value.pickupDateTime
-    ? format(parseISO(value.pickupDateTime), "yyyy-MM-dd")
-    : format(new Date(), "yyyy-MM-dd");
-  const pickupTime = value.pickupDateTime
-    ? format(parseISO(value.pickupDateTime), "HH:mm")
-    : "12:00";
-
-  return (
-    <div className="rounded-xl border border-border/70 bg-card p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h4 className="text-sm font-semibold text-foreground">
-          {isEditing
-            ? index === -1
-              ? "New Transport Booking"
-              : "Edit Transport"
-            : `Transport #${index + 1}`}
-        </h4>
-        <div className="flex items-center gap-1">
-          {onCancel && (
-            <Button size="sm" variant="ghost" onClick={onCancel}>
-              <X className="size-3.5" /> Cancel
-            </Button>
-          )}
-          {onRemove && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-              onClick={onRemove}
-            >
-              <Trash2 className="size-3.5" />
-            </Button>
-          )}
-          {onSave && (
-            <Button size="sm" onClick={() => onSave?.(value)} className="bg-gold text-gold-foreground hover:bg-gold/90">
-              <Save className="size-3.5" /> Save
-            </Button>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Field label="Car Type">
-          <Select
-            value={(value.carType as string) || "SEDAN"}
-            onValueChange={(v) => update("carType", v)}
-          >
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {CAR_TYPES.map((c) => (
-                <SelectItem key={c} value={c}>{c}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="No of Pax">
-          <Input
-            type="number"
-            min={1}
-            value={Number(value.noOfPax ?? 1)}
-            onChange={(e) => update("noOfPax", Math.max(1, Number(e.target.value)))}
-          />
-        </Field>
-        <Field label="Transport Type">
-          <Select
-            value={(value.transportType as string) || "ARRIVAL"}
-            onValueChange={(v) => update("transportType", v)}
-          >
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {TRANSPORT_TYPES.map((t) => (
-                <SelectItem key={t} value={t}>{t}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Pickup Date">
-          <Input
-            type="date"
-            value={pickupDate}
-            onChange={(e) => {
-              const dt = new Date(`${e.target.value}T${pickupTime}`);
-              update("pickupDateTime", dt.toISOString());
-            }}
-          />
-        </Field>
-        <Field label="Pickup Time">
-          <Input
-            type="time"
-            value={pickupTime}
-            onChange={(e) => {
-              const dt = new Date(`${pickupDate}T${e.target.value}`);
-              update("pickupDateTime", dt.toISOString());
-            }}
-          />
-        </Field>
-        <Field label="Flight Number">
-          <Input
-            value={(value.flightNumber as string) || ""}
-            onChange={(e) => update("flightNumber", e.target.value)}
-            placeholder="EK 123"
-          />
-        </Field>
-        <Field label="Pickup Location" required>
-          <Input
-            value={(value.pickupLocation as string) || ""}
-            onChange={(e) => update("pickupLocation", e.target.value)}
-            placeholder="Airport / Hotel / Address"
-          />
-        </Field>
-        <Field label="Drop-off Location">
-          <Input
-            value={(value.dropoffLocation as string) || ""}
-            onChange={(e) => update("dropoffLocation", e.target.value)}
-          />
-        </Field>
-        <Field label="Supplier">
-          <Select
-            value={(value.supplierId as string) || ""}
-            onValueChange={(v) => update("supplierId", v)}
-          >
-            <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
-            <SelectContent>
-              {suppliers
-                .filter((s) => s.type === "TRANSPORT")
-                .map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Contact Number">
-          <Input
-            value={(value.contactNumber as string) || ""}
-            onChange={(e) => update("contactNumber", e.target.value)}
-            placeholder="+971 50 …"
-          />
-        </Field>
-        <Field label="Confirmation #">
-          <Input
-            value={(value.confirmationNumber as string) || ""}
-            onChange={(e) => update("confirmationNumber", e.target.value)}
-          />
-        </Field>
-        <Field label="Status">
-          <Select
-            value={(value.status as string) || "INITIATED"}
-            onValueChange={(v) => update("status", v)}
-          >
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {SERVICE_STATUSES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s.replace(/_/g, " ")}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-      </div>
-
-      <div className="mt-4 rounded-lg border border-border/70 bg-muted/30 p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Pricing
-          </p>
-          <div className="flex items-center gap-2">
-            <Label className="text-[11px] text-muted-foreground">Show on Voucher</Label>
-            <Switch
-              checked={value.showOnVoucher ?? true}
-              onCheckedChange={(v) => update("showOnVoucher", v)}
-            />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {canSeeNet && (
-            <Field label="Net Rate">
-              <Input
-                type="number"
-                value={netRate}
-                onChange={(e) => update("netRate", Number(e.target.value))}
-              />
-            </Field>
-          )}
-          <Field label="Sell Rate">
-            <Input
-              type="number"
-              value={sellRate}
-              onChange={(e) => update("sellRate", Number(e.target.value))}
-            />
-          </Field>
-          {canSeeNet && (
-            <div className="flex items-end">
-              <div className="w-full rounded-md bg-card p-2 text-center">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                  Margin (auto)
-                </p>
-                <p className="text-sm font-bold text-emerald-600">
-                  {margin.toFixed(2)}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <Field label="Comments">
-        <Textarea
-          value={(value.comments as string) || ""}
-          onChange={(e) => update("comments", e.target.value)}
-          rows={2}
-          className="mt-2"
-        />
-      </Field>
-    </div>
-  );
-}
-
-/* ================================================================== */
-/* HOTEL FORM CARD                                                    */
-/* ================================================================== */
-
-interface HotelFormProps {
-  index: number;
-  value: Partial<HotelBookingT>;
-  canSeeNet: boolean;
+  saving,
+  isEdit,
+  updatedAt,
+}: {
+  form: TourFormState;
+  setForm: React.Dispatch<React.SetStateAction<TourFormState>>;
+  experiences: ExperienceOption[];
   suppliers: SupplierT[];
-  catalogHotels?: { id: string; name: string }[];
-  onSave?: (v: Partial<HotelBookingT>) => void;
-  onChange?: (v: Partial<HotelBookingT>) => void;
-  onCancel?: () => void;
-  onRemove?: () => void;
-}
-
-function HotelFormCard({
-  index,
-  value,
-  canSeeNet,
-  suppliers,
-  catalogHotels,
-  onSave,
-  onChange,
-  onCancel,
-  onRemove,
-}: HotelFormProps) {
-  const isEditing = Boolean(onSave);
-
-  function update<K extends keyof HotelBookingT>(key: K, v: HotelBookingT[K]) {
-    onChange?.({ ...value, [key]: v });
-  }
-
-  const checkIn = value.checkInDate
-    ? format(parseISO(value.checkInDate), "yyyy-MM-dd")
-    : format(new Date(), "yyyy-MM-dd");
-  const checkOut = value.checkOutDate
-    ? format(parseISO(value.checkOutDate), "yyyy-MM-dd")
-    : format(new Date(Date.now() + 86400000), "yyyy-MM-dd");
-
-  const nights = useMemo(() => {
-    try {
-      return Math.max(1, differenceInCalendarDays(parseISO(checkOut), parseISO(checkIn)));
-    } catch {
-      return 1;
-    }
-  }, [checkIn, checkOut]);
-
-  const pricing = useMemo(() => {
-    return calcHotelPricing({
-      costPerNight: Number(value.costPerNight ?? 0),
-      sellPerNight: Number(value.sellPerNight ?? 0),
-      nights,
-      noOfRooms: Number(value.noOfRooms ?? 1),
-    });
-  }, [value.costPerNight, value.sellPerNight, nights, value.noOfRooms]);
-
-  return (
-    <div className="rounded-xl border border-border/70 bg-card p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h4 className="text-sm font-semibold text-foreground">
-          {isEditing
-            ? index === -1
-              ? "New Hotel Booking"
-              : "Edit Hotel"
-            : `Hotel #${index + 1}`}
-        </h4>
-        <div className="flex items-center gap-1">
-          {onCancel && (
-            <Button size="sm" variant="ghost" onClick={onCancel}>
-              <X className="size-3.5" /> Cancel
-            </Button>
-          )}
-          {onRemove && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-              onClick={onRemove}
-            >
-              <Trash2 className="size-3.5" />
-            </Button>
-          )}
-          {onSave && (
-            <Button size="sm" onClick={() => onSave?.({ ...value, nights })} className="bg-gold text-gold-foreground hover:bg-gold/90">
-              <Save className="size-3.5" /> Save
-            </Button>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Field label="Hotel" required>
-          {catalogHotels && catalogHotels.length > 0 ? (
-            <Select
-              value={(value.hotelId as string) || ""}
-              onValueChange={(v) => {
-                const h = catalogHotels.find((e) => e.id === v);
-                update("hotelId", v);
-                if (h) update("hotelName", h.name);
-              }}
-            >
-              <SelectTrigger><SelectValue placeholder="Select from catalog…" /></SelectTrigger>
-              <SelectContent>
-                {catalogHotels.map((h) => (
-                  <SelectItem key={h.id} value={h.id}>
-                    {h.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          ) : null}
-          <Input
-            className={catalogHotels && catalogHotels.length > 0 ? "mt-2" : ""}
-            value={(value.hotelName as string) || ""}
-            onChange={(e) => update("hotelName", e.target.value)}
-            placeholder="Or enter hotel name"
-          />
-        </Field>
-        <Field label="Room Type">
-          <Input
-            value={(value.roomType as string) || ""}
-            onChange={(e) => update("roomType", e.target.value)}
-            placeholder="Sky Pool Suite"
-          />
-        </Field>
-        <Field label="Meal Plan">
-          <Select
-            value={(value.mealPlan as string) || "BB"}
-            onValueChange={(v) => update("mealPlan", v)}
-          >
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {MEAL_PLANS.map((m) => (
-                <SelectItem key={m.value} value={m.value}>
-                  {m.label} ({m.value})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Check-in Date" required>
-          <Input
-            type="date"
-            value={checkIn}
-            onChange={(e) => update("checkInDate", new Date(`${e.target.value}T12:00`).toISOString())}
-          />
-        </Field>
-        <Field label="Check-out Date" required>
-          <Input
-            type="date"
-            value={checkOut}
-            onChange={(e) => update("checkOutDate", new Date(`${e.target.value}T12:00`).toISOString())}
-          />
-        </Field>
-        <Field label="Nights (auto)">
-          <Input value={nights} disabled className="bg-muted/30" />
-        </Field>
-        <Field label="No of Rooms">
-          <Input
-            type="number"
-            min={1}
-            value={Number(value.noOfRooms ?? 1)}
-            onChange={(e) => update("noOfRooms", Math.max(1, Number(e.target.value)))}
-          />
-        </Field>
-        <Field label="No of Adults">
-          <Input
-            type="number"
-            min={1}
-            value={Number(value.noOfAdults ?? 1)}
-            onChange={(e) => update("noOfAdults", Math.max(1, Number(e.target.value)))}
-          />
-        </Field>
-        <Field label="No of Children">
-          <Input
-            type="number"
-            min={0}
-            value={Number(value.noOfChildren ?? 0)}
-            onChange={(e) => update("noOfChildren", Math.max(0, Number(e.target.value)))}
-          />
-        </Field>
-        <Field label="Supplier">
-          <Select
-            value={(value.supplierId as string) || ""}
-            onValueChange={(v) => update("supplierId", v)}
-          >
-            <SelectTrigger><SelectValue placeholder="—" /></SelectTrigger>
-            <SelectContent>
-              {suppliers
-                .filter((s) => s.type === "HOTEL")
-                .map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Confirmation #">
-          <Input
-            value={(value.confirmationNumber as string) || ""}
-            onChange={(e) => update("confirmationNumber", e.target.value)}
-          />
-        </Field>
-        <Field label="Status">
-          <Select
-            value={(value.status as string) || "INITIATED"}
-            onValueChange={(v) => update("status", v)}
-          >
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {SERVICE_STATUSES.map((s) => (
-                <SelectItem key={s} value={s}>
-                  {s.replace(/_/g, " ")}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-      </div>
-
-      <div className="mt-4 rounded-lg border border-border/70 bg-muted/30 p-3">
-        <div className="mb-2 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Pricing
-          </p>
-          <div className="flex items-center gap-2">
-            <Label className="text-[11px] text-muted-foreground">Show on Voucher</Label>
-            <Switch
-              checked={value.showOnVoucher ?? true}
-              onCheckedChange={(v) => update("showOnVoucher", v)}
-            />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {canSeeNet && (
-            <Field label="Cost / Night">
-              <Input
-                type="number"
-                value={Number(value.costPerNight ?? 0)}
-                onChange={(e) => update("costPerNight", Number(e.target.value))}
-              />
-            </Field>
-          )}
-          <Field label="Sell / Night">
-            <Input
-              type="number"
-              value={Number(value.sellPerNight ?? 0)}
-              onChange={(e) => update("sellPerNight", Number(e.target.value))}
-            />
-          </Field>
-          {canSeeNet && (
-            <div className="flex items-end">
-              <div className="w-full rounded-md bg-card p-2 text-center">
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                  Net Total (auto)
-                </p>
-                <p className="text-sm font-semibold text-foreground">
-                  {pricing.totalCost.toFixed(2)}
-                </p>
-              </div>
-            </div>
-          )}
-          <div className="flex items-end">
-            <div className="w-full rounded-md bg-gold/10 p-2 text-center">
-              <p className="text-[10px] uppercase tracking-wider text-gold-foreground/70">
-                Sell Total (auto)
-              </p>
-              <p className="text-sm font-bold text-gold-foreground">
-                {pricing.totalSell.toFixed(2)}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <Field label="Comments">
-        <Textarea
-          value={(value.comments as string) || ""}
-          onChange={(e) => update("comments", e.target.value)}
-          rows={2}
-          className="mt-2"
-        />
-      </Field>
-    </div>
-  );
-}
-
-/* ================================================================== */
-/* SUPPLIERS SECTION                                                  */
-/* ================================================================== */
-
-function SuppliersSection() {
-  const [items, setItems] = useState<SupplierT[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState<SupplierT | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<SupplierT | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/agency/suppliers", { cache: "no-store" });
-      if (!res.ok) throw new Error("Failed to load suppliers");
-      const data = (await res.json()) as { suppliers: SupplierT[] };
-      setItems(data.suppliers);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      setError(msg);
-      toast.error("Could not load suppliers", { description: msg });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  async function handleDelete() {
-    if (!deleteTarget) return;
-    try {
-      const res = await fetch(`/api/agency/suppliers/${deleteTarget.id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) throw new Error("Failed to delete");
-      toast.success("Supplier deleted");
-      setDeleteTarget(null);
-      load();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      toast.error("Delete failed", { description: msg });
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      <SectionTitle
-        title="Suppliers"
-        subtitle="Tour operators, hotels, transport providers and more."
-        icon={Building2}
-        action={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={load}>
-              <RefreshCw className="size-4" /> Refresh
-            </Button>
-            <Button size="sm" onClick={() => setAdding(true)} className="bg-gold text-gold-foreground hover:bg-gold/90">
-              <Plus className="size-4" /> Add Supplier
-            </Button>
-          </div>
-        }
-      />
-
-      <Card className="rounded-xl">
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="space-y-2 p-4">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full rounded-md" />
-              ))}
-            </div>
-          ) : error ? (
-            <ErrorState message={error} onRetry={load} />
-          ) : items.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 p-10 text-center">
-              <Building2 className="size-8 text-muted-foreground" />
-              <p className="text-sm font-medium">No suppliers yet</p>
-              <Button size="sm" onClick={() => setAdding(true)} className="bg-gold text-gold-foreground hover:bg-gold/90">
-                <Plus className="size-4" /> Add Supplier
-              </Button>
-            </div>
-          ) : (
-            <div className="max-h-[600px] overflow-y-auto">
-              <Table>
-                <TableHeader className="sticky top-0 z-10 bg-card">
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead className="hidden md:table-cell">Type</TableHead>
-                    <TableHead className="hidden lg:table-cell">Contact</TableHead>
-                    <TableHead className="hidden xl:table-cell">City</TableHead>
-                    <TableHead className="hidden lg:table-cell">Markup</TableHead>
-                    <TableHead>Rating</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="w-20" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((s) => (
-                    <TableRow key={s.id}>
-                      <TableCell>
-                        <div className="font-medium text-foreground">{s.name}</div>
-                        {s.email && (
-                          <div className="text-[11px] text-muted-foreground">
-                            {s.email}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell">
-                        <Badge variant="outline" className="text-[10px]">{s.type}</Badge>
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
-                        {s.contactPerson || "—"}
-                        {s.phone && (
-                          <div className="text-[10px]">{s.phone}</div>
-                        )}
-                      </TableCell>
-                      <TableCell className="hidden xl:table-cell text-xs text-muted-foreground">
-                        {s.city || "—"}
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell text-xs">
-                        {s.markupType === "PERCENT"
-                          ? `${s.markupValue}%`
-                          : `${s.markupValue} ${s.currency}`}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-0.5">
-                          {Array.from({ length: 5 }).map((_, i) => (
-                            <Star
-                              key={i}
-                              className={cn(
-                                "size-3",
-                                i < s.rating
-                                  ? "fill-gold text-gold"
-                                  : "text-muted-foreground/30",
-                              )}
-                            />
-                          ))}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "text-[10px]",
-                            s.active
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                              : "border-muted text-muted-foreground",
-                          )}
-                        >
-                          {s.active ? "Active" : "Inactive"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="size-7 text-muted-foreground"
-                            onClick={() => setEditing(s)}
-                          >
-                            <Pencil className="size-3" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="size-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                            onClick={() => setDeleteTarget(s)}
-                          >
-                            <Trash2 className="size-3" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <SupplierDialog
-        open={adding || editing !== null}
-        supplier={editing}
-        onClose={() => {
-          setAdding(false);
-          setEditing(null);
-        }}
-        onSaved={() => {
-          setAdding(false);
-          setEditing(null);
-          load();
-        }}
-      />
-
-      <AlertDialog open={deleteTarget !== null} onOpenChange={(o) => !o && setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete supplier?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete <b>{deleteTarget?.name}</b>.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
-  );
-}
-
-function SupplierDialog({
-  open,
-  supplier,
-  onClose,
-  onSaved,
-}: {
-  open: boolean;
-  supplier: SupplierT | null;
-  onClose: () => void;
-  onSaved: () => void;
+  onSupplierAdded: () => void;
+  onSelectTour: (id: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  saving: boolean;
+  isEdit: boolean;
+  updatedAt?: string;
 }) {
-  const [name, setName] = useState("");
-  const [type, setType] = useState("TOUR");
-  const [contactPerson, setContactPerson] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [whatsapp, setWhatsapp] = useState("");
-  const [address, setAddress] = useState("");
-  const [city, setCity] = useState("");
-  const [country, setCountry] = useState("");
-  const [currency, setCurrency] = useState("AED");
-  const [paymentTerms, setPaymentTerms] = useState("");
-  const [markupType, setMarkupType] = useState("PERCENT");
-  const [markupValue, setMarkupValue] = useState("20");
-  const [rating, setRating] = useState("5");
-  const [active, setActive] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (supplier) {
-      setName(supplier.name);
-      setType(supplier.type);
-      setContactPerson(supplier.contactPerson ?? "");
-      setEmail(supplier.email ?? "");
-      setPhone(supplier.phone ?? "");
-      setWhatsapp(supplier.whatsapp ?? "");
-      setAddress(supplier.address ?? "");
-      setCity(supplier.city ?? "");
-      setCountry(supplier.country ?? "");
-      setCurrency(supplier.currency);
-      setPaymentTerms(supplier.paymentTerms ?? "");
-      setMarkupType(supplier.markupType);
-      setMarkupValue(String(supplier.markupValue));
-      setRating(String(supplier.rating));
-      setActive(supplier.active);
-    } else if (open) {
-      setName("");
-      setType("TOUR");
-      setContactPerson("");
-      setEmail("");
-      setPhone("");
-      setWhatsapp("");
-      setAddress("");
-      setCity("");
-      setCountry("");
-      setCurrency("AED");
-      setPaymentTerms("");
-      setMarkupType("PERCENT");
-      setMarkupValue("20");
-      setRating("5");
-      setActive(true);
-    }
-  }, [supplier, open]);
-
-  async function save() {
-    if (!name.trim()) {
-      toast.error("Name required");
-      return;
-    }
-    setSaving(true);
-    try {
-      const body = {
-        name,
-        type,
-        contactPerson,
-        email,
-        phone,
-        whatsapp,
-        address,
-        city,
-        country,
-        currency,
-        paymentTerms,
-        markupType,
-        markupValue: Number(markupValue),
-        rating: Number(rating),
-        active,
-      };
-      const url = supplier
-        ? `/api/agency/suppliers/${supplier.id}`
-        : "/api/agency/suppliers";
-      const method = supplier ? "PUT" : "POST";
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || "Failed");
-      }
-      toast.success(supplier ? "Supplier updated" : "Supplier created");
-      onSaved();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      toast.error("Save failed", { description: msg });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle style={{ fontFamily: "var(--font-display)" }}>
-            {supplier ? "Edit Supplier" : "New Supplier"}
-          </DialogTitle>
-          <DialogDescription>
-            Tour operator, hotel chain, transport provider or other vendor.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Name" required>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
-          </Field>
-          <Field label="Type">
-            <Select value={type} onValueChange={setType}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {SUPPLIER_TYPES.map((t) => (
-                  <SelectItem key={t} value={t}>{t}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="Contact Person">
-            <Input value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} />
-          </Field>
-          <Field label="Email">
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </Field>
-          <Field label="Phone">
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
-          </Field>
-          <Field label="WhatsApp">
-            <Input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} />
-          </Field>
-          <Field label="Address">
-            <Input value={address} onChange={(e) => setAddress(e.target.value)} />
-          </Field>
-          <Field label="City">
-            <Input value={city} onChange={(e) => setCity(e.target.value)} />
-          </Field>
-          <Field label="Country">
-            <Input value={country} onChange={(e) => setCountry(e.target.value)} />
-          </Field>
-          <Field label="Currency">
-            <Select value={currency} onValueChange={setCurrency}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {["AED", "USD", "EUR", "GBP", "SAR"].map((c) => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="Payment Terms">
-            <Input value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="e.g. 30 days credit" />
-          </Field>
-          <Field label="Markup Type">
-            <Select value={markupType} onValueChange={setMarkupType}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="PERCENT">Percent</SelectItem>
-                <SelectItem value="FIXED">Fixed</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="Markup Value">
-            <Input
-              type="number"
-              value={markupValue}
-              onChange={(e) => setMarkupValue(e.target.value)}
-            />
-          </Field>
-          <Field label="Rating (1-5)">
-            <Select value={rating} onValueChange={setRating}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {[1, 2, 3, 4, 5].map((r) => (
-                  <SelectItem key={r} value={String(r)}>{r} star{r > 1 ? "s" : ""}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-        </div>
-
-        <div className="flex items-center gap-2 pt-2">
-          <Switch checked={active} onCheckedChange={setActive} />
-          <Label className="text-sm">Active</Label>
-        </div>
-
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={save} disabled={saving} className="bg-gold text-gold-foreground hover:bg-gold/90">
-            {saving ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Save className="size-4" />
-            )}{" "}
-            {supplier ? "Update" : "Create"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+  // Auto-calc net rates in real-time
+  const pricing = useMemo(
+    () =>
+      calcTourPricing({
+        costUnit: form.costUnit,
+        adultCostRate: num(form.adultCostRate),
+        childCostRate: num(form.childCostRate),
+        carCostRate: num(form.carCostRate),
+        adultSellRate: num(form.adultSellRate),
+        childSellRate: num(form.childSellRate),
+        carSellRate: num(form.carSellRate),
+        noOfAdults: num(form.noOfAdults),
+        noOfChildren: num(form.noOfChildren),
+      }),
+    [form],
   );
-}
-
-/* ================================================================== */
-/* EMPLOYEES SECTION                                                  */
-/* ================================================================== */
-
-function EmployeesSection() {
-  const [items, setItems] = useState<EmployeeT[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [editing, setEditing] = useState<EmployeeT | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<EmployeeT | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/agency/employees", { cache: "no-store" });
-      if (!res.ok) throw new Error("Failed to load employees");
-      const data = (await res.json()) as { employees: EmployeeT[] };
-      setItems(data.employees);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      setError(msg);
-      toast.error("Could not load employees", { description: msg });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  async function handleDelete() {
-    if (!deleteTarget) return;
-    try {
-      const res = await fetch(`/api/agency/employees/${deleteTarget.id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) throw new Error("Failed to delete");
-      toast.success("Employee deleted");
-      setDeleteTarget(null);
-      load();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      toast.error("Delete failed", { description: msg });
-    }
-  }
 
   return (
-    <div className="space-y-4">
-      <SectionTitle
-        title="Employees"
-        subtitle="Agency staff with role-based access."
-        icon={Users}
-        action={
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={load}>
-              <RefreshCw className="size-4" /> Refresh
-            </Button>
-            <Button size="sm" onClick={() => setAdding(true)} className="bg-gold text-gold-foreground hover:bg-gold/90">
-              <Plus className="size-4" /> Add Employee
-            </Button>
-          </div>
-        }
+    <div>
+      <ServiceFormHeader
+        title={isEdit ? "Edit Tour Booking" : "Add Tour Booking"}
+        updatedAt={updatedAt}
+        updatedBy={isEdit ? "Agent" : undefined}
+        onClose={onCancel}
       />
 
-      <Card className="rounded-xl">
-        <CardContent className="p-0">
-          {loading ? (
-            <div className="space-y-2 p-4">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-full rounded-md" />
-              ))}
-            </div>
-          ) : error ? (
-            <ErrorState message={error} onRetry={load} />
-          ) : items.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 p-10 text-center">
-              <Users className="size-8 text-muted-foreground" />
-              <p className="text-sm font-medium">No employees yet</p>
-              <Button size="sm" onClick={() => setAdding(true)} className="bg-gold text-gold-foreground hover:bg-gold/90">
-                <Plus className="size-4" /> Add Employee
-              </Button>
-            </div>
-          ) : (
-            <div className="max-h-[600px] overflow-y-auto">
-              <Table>
-                <TableHeader className="sticky top-0 z-10 bg-card">
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead className="hidden md:table-cell">Email</TableHead>
-                    <TableHead className="hidden lg:table-cell">Phone</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="hidden md:table-cell">Created</TableHead>
-                    <TableHead className="w-20" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((e) => (
-                    <TableRow key={e.id}>
-                      <TableCell className="font-medium text-foreground">
-                        {e.name}
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
-                        {e.email}
-                      </TableCell>
-                      <TableCell className="hidden lg:table-cell text-xs text-muted-foreground">
-                        {e.phone || "—"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="text-[10px]">
-                          {e.role.replace(/_/g, " ")}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "text-[10px]",
-                            e.active
-                              ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                              : "border-muted text-muted-foreground",
-                          )}
-                        >
-                          {e.active ? "Active" : "Inactive"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="hidden md:table-cell text-xs text-muted-foreground">
-                        {fmtDate(e.createdAt)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="size-7 text-muted-foreground"
-                            onClick={() => setEditing(e)}
-                          >
-                            <Pencil className="size-3" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="size-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                            onClick={() => setDeleteTarget(e)}
-                          >
-                            <Trash2 className="size-3" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <EmployeeDialog
-        open={adding || editing !== null}
-        employee={editing}
-        onClose={() => {
-          setAdding(false);
-          setEditing(null);
-        }}
-        onSaved={() => {
-          setAdding(false);
-          setEditing(null);
-          load();
-        }}
-      />
-
-      <AlertDialog open={deleteTarget !== null} onOpenChange={(o) => !o && setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete employee?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete <b>{deleteTarget?.name}</b>.
-              Reservations they created will remain but the sale-by reference will be cleared.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
-  );
-}
-
-function EmployeeDialog({
-  open,
-  employee,
-  onClose,
-  onSaved,
-}: {
-  open: boolean;
-  employee: EmployeeT | null;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [role, setRole] = useState<string>("JUNIOR_AGENT");
-  const [phone, setPhone] = useState("");
-  const [active, setActive] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (employee) {
-      setName(employee.name);
-      setEmail(employee.email);
-      setPassword("");
-      setRole(employee.role);
-      setPhone(employee.phone ?? "");
-      setActive(employee.active);
-    } else if (open) {
-      setName("");
-      setEmail("");
-      setPassword("");
-      setRole("JUNIOR_AGENT");
-      setPhone("");
-      setActive(true);
-    }
-  }, [employee, open]);
-
-  async function save() {
-    if (!name.trim() || !email.trim()) {
-      toast.error("Name and email required");
-      return;
-    }
-    if (!employee && (!password || password.length < 6)) {
-      toast.error("Password must be at least 6 characters");
-      return;
-    }
-    setSaving(true);
-    try {
-      const body: any = { name, email, role, phone, active };
-      if (password) body.password = password;
-      const url = employee
-        ? `/api/agency/employees/${employee.id}`
-        : "/api/agency/employees";
-      const method = employee ? "PUT" : "POST";
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || "Failed");
-      }
-      toast.success(employee ? "Employee updated" : "Employee created");
-      onSaved();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Unknown error";
-      toast.error("Save failed", { description: msg });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle style={{ fontFamily: "var(--font-display)" }}>
-            {employee ? "Edit Employee" : "New Employee"}
-          </DialogTitle>
-          <DialogDescription>
-            Staff access is gated by role. Password is hashed with bcrypt.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-3">
-          <Field label="Full Name" required>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
-          </Field>
-          <Field label="Email" required>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </Field>
-          <Field
-            label={employee ? "New Password (leave blank to keep)" : "Password"}
-            required={!employee}
-          >
-            <Input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-            />
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Role">
-              <Select value={role} onValueChange={setRole}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+      <div className="max-h-[60vh] overflow-y-auto p-4">
+        {/* Tour Details */}
+        <div className="mb-4">
+          <h5 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Tour Details
+          </h5>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <Field label="Tour" required className="lg:col-span-2 xl:col-span-2">
+              <Select value={form.tourId} onValueChange={onSelectTour}>
+                <SelectTrigger><SelectValue placeholder="Select a tour" /></SelectTrigger>
                 <SelectContent>
-                  {ROLES.map((r) => (
-                    <SelectItem key={r} value={r}>
-                      {r.replace(/_/g, " ")}
+                  {experiences.map((e) => (
+                    <SelectItem key={e.id} value={e.id}>
+                      {e.title} ({e.currency} {e.price})
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Phone">
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} />
+
+            <Field label="Tour Option">
+              <Input
+                value={form.tourOption}
+                onChange={(e) => setForm((f) => ({ ...f, tourOption: e.target.value }))}
+                placeholder="e.g. 2 Park Pass"
+              />
             </Field>
-          </div>
-          <div className="flex items-center gap-2">
-            <Switch checked={active} onCheckedChange={setActive} />
-            <Label className="text-sm">Active</Label>
+
+            <Field label="Transfer Option">
+              <Select value={form.transferOption} onValueChange={(v) => setForm((f) => ({ ...f, transferOption: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TRANSFER_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field label="Pickup Location">
+              <Input
+                value={form.pickupLocation}
+                onChange={(e) => setForm((f) => ({ ...f, pickupLocation: e.target.value }))}
+                placeholder="Hotel / address"
+              />
+            </Field>
+
+            <Field label="Tour Date">
+              <Input
+                type="date"
+                value={form.tourDate}
+                onChange={(e) => setForm((f) => ({ ...f, tourDate: e.target.value }))}
+              />
+            </Field>
+
+            <Field label="Pickup Time">
+              <Input
+                value={form.pickupTime}
+                onChange={(e) => setForm((f) => ({ ...f, pickupTime: e.target.value }))}
+                placeholder="e.g. 08:30 AM"
+              />
+            </Field>
+
+            <Field label="Time Slot">
+              <Input
+                value={form.timeSlot}
+                onChange={(e) => setForm((f) => ({ ...f, timeSlot: e.target.value }))}
+                placeholder="e.g. Morning"
+              />
+            </Field>
+
+            <Field label="No of Adults">
+              <Input
+                type="number"
+                min="0"
+                value={form.noOfAdults}
+                onChange={(e) => setForm((f) => ({ ...f, noOfAdults: e.target.value }))}
+              />
+            </Field>
+
+            <Field label="No of Children">
+              <Input
+                type="number"
+                min="0"
+                value={form.noOfChildren}
+                onChange={(e) => setForm((f) => ({ ...f, noOfChildren: e.target.value }))}
+              />
+            </Field>
+
+            <Field label="Supplier">
+              <div className="flex items-center gap-2">
+                <Select value={form.supplierId} onValueChange={(v) => setForm((f) => ({ ...f, supplierId: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">— None —</SelectItem>
+                    {suppliers.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <AddSupplierButton defaultType="TOUR" onCreated={onSupplierAdded} />
+              </div>
+            </Field>
+
+            <Field label="Confirmation Number">
+              <Input
+                value={form.confirmationNumber}
+                onChange={(e) => setForm((f) => ({ ...f, confirmationNumber: e.target.value }))}
+                placeholder="Supplier ref"
+              />
+            </Field>
+
+            <Field label="Status">
+              <Select value={form.status} onValueChange={(v) => setForm((f) => ({ ...f, status: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {SERVICE_STATUSES.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field label="Comments" className="sm:col-span-2 lg:col-span-3 xl:col-span-4">
+              <Textarea
+                rows={2}
+                value={form.comments}
+                onChange={(e) => setForm((f) => ({ ...f, comments: e.target.value }))}
+                placeholder="Internal comments…"
+              />
+            </Field>
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={save} disabled={saving} className="bg-gold text-gold-foreground hover:bg-gold/90">
-            {saving ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Save className="size-4" />
-            )}{" "}
-            {employee ? "Update" : "Create"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <Separator className="my-4" />
+
+        {/* Pricing */}
+        <div className="mb-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h5 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Pricing
+            </h5>
+            <Field label="Cost Unit" className="w-48">
+              <Select value={form.costUnit} onValueChange={(v) => setForm((f) => ({ ...f, costUnit: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {COST_UNITS.map((u) => (
+                    <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {/* Cost */}
+            <div className="rounded-lg border border-border bg-muted/20 p-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Cost Price (Net)
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Adult Rate">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.adultCostRate}
+                    onChange={(e) => setForm((f) => ({ ...f, adultCostRate: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Child Rate">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.childCostRate}
+                    onChange={(e) => setForm((f) => ({ ...f, childCostRate: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Car Rate (transfer)">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.carCostRate}
+                    onChange={(e) => setForm((f) => ({ ...f, carCostRate: e.target.value }))}
+                  />
+                </Field>
+                <div className="col-span-2 grid grid-cols-2 gap-3">
+                  <Field label="Net Adult Rate">
+                    <Input value={pricing.netAdultRate.toFixed(2)} readOnly className="bg-muted/50 font-mono text-sm" />
+                  </Field>
+                  <Field label="Net Child Rate">
+                    <Input value={pricing.netChildRate.toFixed(2)} readOnly className="bg-muted/50 font-mono text-sm" />
+                  </Field>
+                </div>
+                <div className="col-span-2">
+                  <div className="flex justify-between rounded-md border border-border bg-card p-2">
+                    <span className="text-xs font-semibold uppercase text-muted-foreground">Total Cost</span>
+                    <span className="font-mono text-sm font-bold text-foreground">
+                      {pricing.totalCost.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Sell */}
+            <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-primary">
+                Selling Price (to customer)
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Adult Rate">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.adultSellRate}
+                    onChange={(e) => setForm((f) => ({ ...f, adultSellRate: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Child Rate">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.childSellRate}
+                    onChange={(e) => setForm((f) => ({ ...f, childSellRate: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Car Rate (transfer)">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.carSellRate}
+                    onChange={(e) => setForm((f) => ({ ...f, carSellRate: e.target.value }))}
+                  />
+                </Field>
+                <div className="col-span-2 grid grid-cols-2 gap-3">
+                  <Field label="Net Adult Rate">
+                    <Input value={pricing.sellNetAdult.toFixed(2)} readOnly className="bg-card font-mono text-sm" />
+                  </Field>
+                  <Field label="Net Child Rate">
+                    <Input value={pricing.sellNetChild.toFixed(2)} readOnly className="bg-card font-mono text-sm" />
+                  </Field>
+                </div>
+                <div className="col-span-2">
+                  <div className="flex justify-between rounded-md border border-primary/20 bg-card p-2">
+                    <span className="text-xs font-semibold uppercase text-primary">Total Sell</span>
+                    <span className="font-mono text-sm font-bold text-primary">
+                      {pricing.totalSell.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center gap-2">
+            <Switch
+              checked={form.showOnVoucher}
+              onCheckedChange={(v) => setForm((f) => ({ ...f, showOnVoucher: v }))}
+            />
+            <span className="text-sm font-medium text-foreground">Show on voucher</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/30 px-4 py-3">
+        <Button variant="outline" onClick={onCancel}>Cancel</Button>
+        <Button onClick={onSave} disabled={saving} className="bg-emerald-600 text-white hover:bg-emerald-700">
+          {saving ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Check className="mr-1.5 size-4" />}
+          {isEdit ? "Save Changes" : "Add Tour"}
+        </Button>
+      </div>
+    </div>
   );
 }
 
 /* ================================================================== */
-/* SETTINGS SECTION                                                   */
+/* Transport Tab                                                     */
 /* ================================================================== */
 
-function SettingsSection() {
-  return (
-    <div className="space-y-4">
-      <SectionTitle
-        title="Agency Settings"
-        subtitle="Quick links to other admin features."
-        icon={Settings}
+interface TransportFormState {
+  id?: string;
+  carType: string;
+  noOfPax: string;
+  transportType: string;
+  pickupDateTime: string;
+  pickupLocation: string;
+  dropoffLocation: string;
+  flightNumber: string;
+  netRate: string;
+  sellRate: string;
+  supplierId: string;
+  contactNumber: string;
+  status: string;
+  confirmationNumber: string;
+  comments: string;
+  showOnVoucher: boolean;
+}
+
+function emptyTransportForm(): TransportFormState {
+  return {
+    carType: "SEDAN",
+    noOfPax: "1",
+    transportType: "ARRIVAL",
+    pickupDateTime: toInputDateTime(new Date().toISOString()),
+    pickupLocation: "",
+    dropoffLocation: "",
+    flightNumber: "",
+    netRate: "0",
+    sellRate: "0",
+    supplierId: "",
+    contactNumber: "",
+    status: "INITIATED",
+    confirmationNumber: "",
+    comments: "",
+    showOnVoucher: true,
+  };
+}
+
+function transportFromBooking(t: TransportBookingT): TransportFormState {
+  return {
+    id: t.id,
+    carType: t.carType,
+    noOfPax: String(t.noOfPax),
+    transportType: t.transportType,
+    pickupDateTime: toInputDateTime(t.pickupDateTime),
+    pickupLocation: t.pickupLocation,
+    dropoffLocation: t.dropoffLocation,
+    flightNumber: t.flightNumber ?? "",
+    netRate: String(t.netRate),
+    sellRate: String(t.sellRate),
+    supplierId: t.supplierId ?? "",
+    contactNumber: t.contactNumber ?? "",
+    status: t.status,
+    confirmationNumber: t.confirmationNumber ?? "",
+    comments: t.comments ?? "",
+    showOnVoucher: t.showOnVoucher,
+  };
+}
+
+function TransportTab({
+  reservation,
+  onUpdated,
+}: {
+  reservation: ReservationT;
+  onUpdated: (r: ReservationT) => void;
+}) {
+  const { suppliers, reload: reloadSuppliers } = useSuppliers("TRANSPORT");
+  const [mode, setMode] = useState<"list" | "form">("list");
+  const [form, setForm] = useState<TransportFormState>(emptyTransportForm());
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<TransportBookingT | null>(null);
+
+  function openAdd() {
+    setForm(emptyTransportForm());
+    setMode("form");
+  }
+  function openEdit(t: TransportBookingT) {
+    setForm(transportFromBooking(t));
+    setMode("form");
+  }
+
+  async function save() {
+    if (!form.pickupLocation.trim()) {
+      toast.error("Pick-up location is required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        ...form,
+        noOfPax: num(form.noOfPax),
+        netRate: num(form.netRate),
+        sellRate: num(form.sellRate),
+        pickupDateTime: form.pickupDateTime ? new Date(form.pickupDateTime).toISOString() : null,
+      };
+      const url = form.id
+        ? `/api/agency/reservations/${reservation.id}/transports/${form.id}`
+        : `/api/agency/reservations/${reservation.id}/transports`;
+      const res = await fetch(url, {
+        method: form.id ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to save");
+      toast.success(form.id ? "Transport updated" : "Transport added");
+      const r = await fetch(`/api/agency/reservations/${reservation.id}`);
+      const d = await r.json();
+      if (r.ok) onUpdated(d.reservation);
+      setMode("list");
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to save transport");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(t: TransportBookingT) {
+    try {
+      const res = await fetch(`/api/agency/reservations/${reservation.id}/transports/${t.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete");
+      toast.success("Transport deleted");
+      const r = await fetch(`/api/agency/reservations/${reservation.id}`);
+      const d = await r.json();
+      if (r.ok) onUpdated(d.reservation);
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to delete transport");
+    } finally {
+      setConfirmDelete(null);
+    }
+  }
+
+  if (mode === "form") {
+    return (
+      <TransportFormCard
+        form={form}
+        setForm={setForm}
+        suppliers={suppliers}
+        onSupplierAdded={reloadSuppliers}
+        onSave={save}
+        onCancel={() => setMode("list")}
+        saving={saving}
+        isEdit={!!form.id}
+        updatedAt={form.id ? reservation.transports.find((t) => t.id === form.id)?.updatedAt : undefined}
       />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {[
-          {
-            icon: ClipboardList,
-            title: "Catalog Manager",
-            description: "Add, edit and remove experiences, hotels and destinations.",
-            hint: "Go to Catalog tab",
-          },
-          {
-            icon: Info,
-            title: "AI Knowledge",
-            description: "Customise the AI concierge persona, prompt and business info.",
-            hint: "Go to AI Insights tab",
-          },
-          {
-            icon: CreditCard,
-            title: "Chat Logs",
-            description: "Review customer conversations with the AI concierge.",
-            hint: "Go to AI Chats tab",
-          },
-          {
-            icon: Banknote,
-            title: "Notifications",
-            description: "Outgoing booking confirmation and review request emails.",
-            hint: "Go to Notifications tab",
-          },
-        ].map((card) => (
-          <Card key={card.title} className="rounded-xl transition-shadow hover:shadow-md">
-            <CardContent className="flex items-start gap-3 p-4">
-              <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <card.icon className="size-5" />
-              </div>
-              <div className="flex-1">
-                <h4 className="font-semibold text-foreground">{card.title}</h4>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {card.description}
-                </p>
-                <p className="mt-2 text-[11px] font-semibold uppercase tracking-wider text-gold">
-                  {card.hint}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+    );
+  }
+
+  return (
+    <div>
+      <ServiceListHeader
+        title="Transport Bookings"
+        subtitle={`${reservation.transports.length} transport(s) on this reservation`}
+        onAdd={openAdd}
+        addLabel="Add Transport"
+      />
+      <div className="p-4">
+        {reservation.transports.length === 0 ? (
+          <EmptyServiceState
+            icon={CreditCard}
+            message="No transports added yet"
+            hint="Click 'Add Transport' to add airport transfer, intercity or hourly transport."
+            cta={{ label: "Add Transport", onClick: openAdd }}
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/60 hover:bg-muted/60">
+                  <TableHead className="min-w-[180px]">Pickup → Dropoff</TableHead>
+                  <TableHead className="min-w-[120px]">Car</TableHead>
+                  <TableHead className="min-w-[100px] text-center">Pax</TableHead>
+                  <TableHead className="min-w-[120px]">Type</TableHead>
+                  <TableHead className="min-w-[150px]">Date / Time</TableHead>
+                  <TableHead className="min-w-[120px]">Supplier</TableHead>
+                  <TableHead className="min-w-[120px]">Status</TableHead>
+                  <TableHead className="min-w-[110px] text-right">Sell</TableHead>
+                  <TableHead className="w-[100px] text-center">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {reservation.transports.map((t) => {
+                  const statusMeta = statusMetaFromList(SERVICE_STATUSES, t.status);
+                  const carMeta = CAR_TYPES.find((c) => c.value === t.carType);
+                  const ttMeta = TRANSPORT_TYPES.find((x) => x.value === t.transportType);
+                  return (
+                    <TableRow key={t.id} className="hover:bg-muted/40">
+                      <TableCell>
+                        <div className="flex flex-col gap-0.5 text-sm">
+                          <span className="font-medium text-foreground">{t.pickupLocation}</span>
+                          <span className="text-xs text-muted-foreground">→ {t.dropoffLocation || "—"}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{carMeta?.label ?? t.carType}</Badge>
+                      </TableCell>
+                      <TableCell className="text-center text-sm">{t.noOfPax}</TableCell>
+                      <TableCell>
+                        <span className="text-sm text-foreground">{ttMeta?.label ?? t.transportType}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm text-foreground">{fmtDateTime(t.pickupDateTime)}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm text-foreground">{t.supplierName ?? "—"}</span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="whitespace-nowrap">
+                          {statusMeta?.label ?? t.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm font-semibold text-foreground">
+                        {money(reservation.currency, t.sellRate)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-8 text-primary hover:bg-primary/10"
+                            onClick={() => openEdit(t)}
+                            title="Edit transport"
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-8 text-rose-500 hover:bg-rose-50"
+                            onClick={() => setConfirmDelete(t)}
+                            title="Delete transport"
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </div>
 
-      <Card className="rounded-xl border-gold/30 bg-gold/5">
-        <CardContent className="flex items-start gap-3 p-4">
-          <Info className="size-5 text-gold" />
-          <div>
-            <h4 className="font-semibold text-foreground">Role-based visibility</h4>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Use the <b>View as</b> selector at the top to switch between Admin,
-              Senior Agent, Junior Agent and Accounts. Junior Agents do not see
-              supplier net (cost) rates — only sell rates and totals.
-            </p>
+      <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete transport booking?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove this transport from the reservation. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-rose-600 text-white hover:bg-rose-700"
+              onClick={() => confirmDelete && remove(confirmDelete)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function TransportFormCard({
+  form,
+  setForm,
+  suppliers,
+  onSupplierAdded,
+  onSave,
+  onCancel,
+  saving,
+  isEdit,
+  updatedAt,
+}: {
+  form: TransportFormState;
+  setForm: React.Dispatch<React.SetStateAction<TransportFormState>>;
+  suppliers: SupplierT[];
+  onSupplierAdded: () => void;
+  onSave: () => void;
+  onCancel: () => void;
+  saving: boolean;
+  isEdit: boolean;
+  updatedAt?: string;
+}) {
+  const margin = num(form.sellRate) - num(form.netRate);
+  return (
+    <div>
+      <ServiceFormHeader
+        title={isEdit ? "Edit Transport Booking" : "Add Transport Booking"}
+        updatedAt={updatedAt}
+        updatedBy={isEdit ? "Agent" : undefined}
+        onClose={onCancel}
+      />
+
+      <div className="max-h-[60vh] overflow-y-auto p-4">
+        <h5 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Transport Details
+        </h5>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <Field label="Car">
+            <Select value={form.carType} onValueChange={(v) => setForm((f) => ({ ...f, carType: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {CAR_TYPES.map((c) => (
+                  <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="No. of Pax">
+            <Input
+              type="number"
+              min="1"
+              value={form.noOfPax}
+              onChange={(e) => setForm((f) => ({ ...f, noOfPax: e.target.value }))}
+            />
+          </Field>
+          <Field label="Transport Type">
+            <Select value={form.transportType} onValueChange={(v) => setForm((f) => ({ ...f, transportType: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {TRANSPORT_TYPES.map((t) => (
+                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Pick Up Date Time">
+            <Input
+              type="datetime-local"
+              value={form.pickupDateTime}
+              onChange={(e) => setForm((f) => ({ ...f, pickupDateTime: e.target.value }))}
+            />
+          </Field>
+          <Field label="Pick-up Location" required>
+            <Input
+              value={form.pickupLocation}
+              onChange={(e) => setForm((f) => ({ ...f, pickupLocation: e.target.value }))}
+              placeholder="Airport / hotel / address"
+            />
+          </Field>
+          <Field label="Drop off Location">
+            <Input
+              value={form.dropoffLocation}
+              onChange={(e) => setForm((f) => ({ ...f, dropoffLocation: e.target.value }))}
+              placeholder="Airport / hotel / address"
+            />
+          </Field>
+          <Field label="Flight Number">
+            <Input
+              value={form.flightNumber}
+              onChange={(e) => setForm((f) => ({ ...f, flightNumber: e.target.value }))}
+              placeholder="e.g. EK 123"
+            />
+          </Field>
+          <Field label="Net Rate (cost)">
+            <Input
+              type="number"
+              step="0.01"
+              value={form.netRate}
+              onChange={(e) => setForm((f) => ({ ...f, netRate: e.target.value }))}
+            />
+          </Field>
+          <Field label="Sell Rate">
+            <Input
+              type="number"
+              step="0.01"
+              value={form.sellRate}
+              onChange={(e) => setForm((f) => ({ ...f, sellRate: e.target.value }))}
+            />
+          </Field>
+          <Field label="Margin">
+            <Input value={margin.toFixed(2)} readOnly className="bg-muted/50 font-mono text-sm" />
+          </Field>
+          <Field label="Supplier">
+            <div className="flex items-center gap-2">
+              <Select value={form.supplierId} onValueChange={(v) => setForm((f) => ({ ...f, supplierId: v }))}>
+                <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">— None —</SelectItem>
+                  {suppliers.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <AddSupplierButton defaultType="TRANSPORT" onCreated={onSupplierAdded} />
+            </div>
+          </Field>
+          <Field label="Contact Number">
+            <Input
+              value={form.contactNumber}
+              onChange={(e) => setForm((f) => ({ ...f, contactNumber: e.target.value }))}
+              placeholder="Driver / supplier contact"
+            />
+          </Field>
+          <Field label="Status">
+            <Select value={form.status} onValueChange={(v) => setForm((f) => ({ ...f, status: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {SERVICE_STATUSES.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Confirmation Number">
+            <Input
+              value={form.confirmationNumber}
+              onChange={(e) => setForm((f) => ({ ...f, confirmationNumber: e.target.value }))}
+            />
+          </Field>
+          <Field label="Show on Voucher">
+            <Select
+              value={form.showOnVoucher ? "YES" : "NO"}
+              onValueChange={(v) => setForm((f) => ({ ...f, showOnVoucher: v === "YES" }))}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {YES_NO.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Comments" className="sm:col-span-2 lg:col-span-3 xl:col-span-4">
+            <Textarea
+              rows={2}
+              value={form.comments}
+              onChange={(e) => setForm((f) => ({ ...f, comments: e.target.value }))}
+              placeholder="Internal comments…"
+            />
+          </Field>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/30 px-4 py-3">
+        <Button variant="outline" onClick={onCancel}>Cancel</Button>
+        <Button onClick={onSave} disabled={saving} className="bg-emerald-600 text-white hover:bg-emerald-700">
+          {saving ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Check className="mr-1.5 size-4" />}
+          {isEdit ? "Save Changes" : "Add Transport"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* Hotels Tab                                                        */
+/* ================================================================== */
+
+interface HotelFormState {
+  id?: string;
+  hotelId: string;
+  hotelName: string;
+  roomType: string;
+  mealPlan: string;
+  checkInDate: string;
+  checkOutDate: string;
+  nights: string;
+  noOfRooms: string;
+  noOfAdults: string;
+  noOfChildren: string;
+  supplierId: string;
+  confirmationNumber: string;
+  status: string;
+  comments: string;
+  costPerNight: string;
+  sellPerNight: string;
+  showOnVoucher: boolean;
+}
+
+function emptyHotelForm(): HotelFormState {
+  const today = new Date();
+  const tomorrow = new Date(today.getTime() + 86400000);
+  return {
+    hotelId: "",
+    hotelName: "",
+    roomType: "Standard",
+    mealPlan: "BB",
+    checkInDate: toInputDate(today.toISOString()),
+    checkOutDate: toInputDate(tomorrow.toISOString()),
+    nights: "1",
+    noOfRooms: "1",
+    noOfAdults: "1",
+    noOfChildren: "0",
+    supplierId: "",
+    confirmationNumber: "",
+    status: "INITIATED",
+    comments: "",
+    costPerNight: "0",
+    sellPerNight: "0",
+    showOnVoucher: true,
+  };
+}
+
+function hotelFromBooking(h: HotelBookingT): HotelFormState {
+  return {
+    id: h.id,
+    hotelId: h.hotelId ?? "",
+    hotelName: h.hotelName,
+    roomType: h.roomType,
+    mealPlan: h.mealPlan,
+    checkInDate: toInputDate(h.checkInDate),
+    checkOutDate: toInputDate(h.checkOutDate),
+    nights: String(h.nights),
+    noOfRooms: String(h.noOfRooms),
+    noOfAdults: String(h.noOfAdults),
+    noOfChildren: String(h.noOfChildren),
+    supplierId: h.supplierId ?? "",
+    confirmationNumber: h.confirmationNumber ?? "",
+    status: h.status,
+    comments: h.comments ?? "",
+    costPerNight: String(h.costPerNight),
+    sellPerNight: String(h.sellPerNight),
+    showOnVoucher: h.showOnVoucher,
+  };
+}
+
+function HotelsTab({
+  reservation,
+  onUpdated,
+}: {
+  reservation: ReservationT;
+  onUpdated: (r: ReservationT) => void;
+}) {
+  const { hotels } = useHotelsCatalog();
+  const { suppliers, reload: reloadSuppliers } = useSuppliers("HOTEL");
+  const [mode, setMode] = useState<"list" | "form">("list");
+  const [form, setForm] = useState<HotelFormState>(emptyHotelForm());
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<HotelBookingT | null>(null);
+
+  function openAdd() {
+    setForm(emptyHotelForm());
+    setMode("form");
+  }
+  function openEdit(h: HotelBookingT) {
+    setForm(hotelFromBooking(h));
+    setMode("form");
+  }
+
+  function selectHotel(id: string) {
+    const h = hotels.find((x) => x.id === id);
+    if (h) {
+      setForm((f) => ({ ...f, hotelId: id, hotelName: h.name }));
+    } else {
+      setForm((f) => ({ ...f, hotelId: "" }));
+    }
+  }
+
+  async function save() {
+    if (!form.hotelName.trim()) {
+      toast.error("Hotel name is required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        ...form,
+        nights: num(form.nights),
+        noOfRooms: num(form.noOfRooms),
+        noOfAdults: num(form.noOfAdults),
+        noOfChildren: num(form.noOfChildren),
+        costPerNight: num(form.costPerNight),
+        sellPerNight: num(form.sellPerNight),
+        checkInDate: form.checkInDate ? new Date(form.checkInDate).toISOString() : null,
+        checkOutDate: form.checkOutDate ? new Date(form.checkOutDate).toISOString() : null,
+      };
+      const url = form.id
+        ? `/api/agency/reservations/${reservation.id}/hotels/${form.id}`
+        : `/api/agency/reservations/${reservation.id}/hotels`;
+      const res = await fetch(url, {
+        method: form.id ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to save");
+      toast.success(form.id ? "Hotel updated" : "Hotel added");
+      const r = await fetch(`/api/agency/reservations/${reservation.id}`);
+      const d = await r.json();
+      if (r.ok) onUpdated(d.reservation);
+      setMode("list");
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to save hotel");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(h: HotelBookingT) {
+    try {
+      const res = await fetch(`/api/agency/reservations/${reservation.id}/hotels/${h.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete");
+      toast.success("Hotel deleted");
+      const r = await fetch(`/api/agency/reservations/${reservation.id}`);
+      const d = await r.json();
+      if (r.ok) onUpdated(d.reservation);
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to delete hotel");
+    } finally {
+      setConfirmDelete(null);
+    }
+  }
+
+  if (mode === "form") {
+    return (
+      <HotelFormCard
+        form={form}
+        setForm={setForm}
+        hotels={hotels}
+        suppliers={suppliers}
+        onSupplierAdded={reloadSuppliers}
+        onSelectHotel={selectHotel}
+        onSave={save}
+        onCancel={() => setMode("list")}
+        saving={saving}
+        isEdit={!!form.id}
+        updatedAt={form.id ? reservation.hotels.find((h) => h.id === form.id)?.updatedAt : undefined}
+      />
+    );
+  }
+
+  return (
+    <div>
+      <ServiceListHeader
+        title="Hotel Bookings"
+        subtitle={`${reservation.hotels.length} hotel(s) on this reservation`}
+        onAdd={openAdd}
+        addLabel="Add Hotel"
+      />
+      <div className="p-4">
+        {reservation.hotels.length === 0 ? (
+          <EmptyServiceState
+            icon={HotelIcon}
+            message="No hotels added yet"
+            hint="Click 'Add Hotel' to add a hotel booking for this reservation."
+            cta={{ label: "Add Hotel", onClick: openAdd }}
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/60 hover:bg-muted/60">
+                  <TableHead className="min-w-[200px]">Hotel</TableHead>
+                  <TableHead className="min-w-[140px]">Room Type</TableHead>
+                  <TableHead className="min-w-[100px]">Meal</TableHead>
+                  <TableHead className="min-w-[120px]">Check-in</TableHead>
+                  <TableHead className="min-w-[120px]">Check-out</TableHead>
+                  <TableHead className="min-w-[70px] text-center">Nights</TableHead>
+                  <TableHead className="min-w-[70px] text-center">Rooms</TableHead>
+                  <TableHead className="min-w-[120px]">Supplier</TableHead>
+                  <TableHead className="min-w-[110px]">Status</TableHead>
+                  <TableHead className="min-w-[110px] text-right">Sell Total</TableHead>
+                  <TableHead className="w-[100px] text-center">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {reservation.hotels.map((h) => {
+                  const statusMeta = statusMetaFromList(SERVICE_STATUSES, h.status);
+                  const mealMeta = MEAL_PLANS.find((m) => m.value === h.mealPlan);
+                  return (
+                    <TableRow key={h.id} className="hover:bg-muted/40">
+                      <TableCell>
+                        <span className="text-sm font-medium text-foreground">{h.hotelName}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm text-foreground">{h.roomType}</span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{mealMeta?.label ?? h.mealPlan}</Badge>
+                      </TableCell>
+                      <TableCell><span className="text-sm">{fmtDate(h.checkInDate)}</span></TableCell>
+                      <TableCell><span className="text-sm">{fmtDate(h.checkOutDate)}</span></TableCell>
+                      <TableCell className="text-center text-sm">{h.nights}</TableCell>
+                      <TableCell className="text-center text-sm">{h.noOfRooms}</TableCell>
+                      <TableCell>
+                        <span className="text-sm">{h.supplierName ?? "—"}</span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="whitespace-nowrap">
+                          {statusMeta?.label ?? h.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm font-semibold text-foreground">
+                        {money(reservation.currency, h.totalSell)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-8 text-primary hover:bg-primary/10"
+                            onClick={() => openEdit(h)}
+                            title="Edit hotel"
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="size-8 text-rose-500 hover:bg-rose-50"
+                            onClick={() => setConfirmDelete(h)}
+                            title="Delete hotel"
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </div>
-        </CardContent>
-      </Card>
+        )}
+      </div>
+
+      <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete hotel booking?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove “{confirmDelete?.hotelName}” from this reservation.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-rose-600 text-white hover:bg-rose-700"
+              onClick={() => confirmDelete && remove(confirmDelete)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+function HotelFormCard({
+  form,
+  setForm,
+  hotels,
+  suppliers,
+  onSupplierAdded,
+  onSelectHotel,
+  onSave,
+  onCancel,
+  saving,
+  isEdit,
+  updatedAt,
+}: {
+  form: HotelFormState;
+  setForm: React.Dispatch<React.SetStateAction<HotelFormState>>;
+  hotels: HotelOption[];
+  suppliers: SupplierT[];
+  onSupplierAdded: () => void;
+  onSelectHotel: (id: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  saving: boolean;
+  isEdit: boolean;
+  updatedAt?: string;
+}) {
+  const pricing = useMemo(
+    () =>
+      calcHotelPricing({
+        costPerNight: num(form.costPerNight),
+        sellPerNight: num(form.sellPerNight),
+        nights: num(form.nights),
+        noOfRooms: num(form.noOfRooms),
+      }),
+    [form.costPerNight, form.sellPerNight, form.nights, form.noOfRooms],
+  );
+
+  return (
+    <div>
+      <ServiceFormHeader
+        title={isEdit ? "Edit Hotel Booking" : "Add Hotel Booking"}
+        updatedAt={updatedAt}
+        updatedBy={isEdit ? "Agent" : undefined}
+        onClose={onCancel}
+      />
+
+      <div className="max-h-[60vh] overflow-y-auto p-4">
+        <h5 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Hotel Details
+        </h5>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <Field label="Hotel" required className="lg:col-span-2 xl:col-span-2">
+            <Select value={form.hotelId} onValueChange={onSelectHotel}>
+              <SelectTrigger><SelectValue placeholder="Select a hotel" /></SelectTrigger>
+              <SelectContent>
+                {hotels.map((h) => (
+                  <SelectItem key={h.id} value={h.id}>
+                    {h.name} ({h.currency} {h.pricePerNight}/night)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Room Type">
+            <Input
+              value={form.roomType}
+              onChange={(e) => setForm((f) => ({ ...f, roomType: e.target.value }))}
+              placeholder="e.g. Deluxe King"
+            />
+          </Field>
+          <Field label="Meal Plan">
+            <Select value={form.mealPlan} onValueChange={(v) => setForm((f) => ({ ...f, mealPlan: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {MEAL_PLANS.map((m) => (
+                  <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Check-in Date">
+            <Input
+              type="date"
+              value={form.checkInDate}
+              onChange={(e) => setForm((f) => ({ ...f, checkInDate: e.target.value }))}
+            />
+          </Field>
+          <Field label="Check-out Date">
+            <Input
+              type="date"
+              value={form.checkOutDate}
+              onChange={(e) => setForm((f) => ({ ...f, checkOutDate: e.target.value }))}
+            />
+          </Field>
+          <Field label="Nights">
+            <Input
+              type="number"
+              min="1"
+              value={form.nights}
+              onChange={(e) => setForm((f) => ({ ...f, nights: e.target.value }))}
+            />
+          </Field>
+          <Field label="No of Rooms">
+            <Input
+              type="number"
+              min="1"
+              value={form.noOfRooms}
+              onChange={(e) => setForm((f) => ({ ...f, noOfRooms: e.target.value }))}
+            />
+          </Field>
+          <Field label="No of Adults">
+            <Input
+              type="number"
+              min="1"
+              value={form.noOfAdults}
+              onChange={(e) => setForm((f) => ({ ...f, noOfAdults: e.target.value }))}
+            />
+          </Field>
+          <Field label="No of Children">
+            <Input
+              type="number"
+              min="0"
+              value={form.noOfChildren}
+              onChange={(e) => setForm((f) => ({ ...f, noOfChildren: e.target.value }))}
+            />
+          </Field>
+          <Field label="Supplier">
+            <div className="flex items-center gap-2">
+              <Select value={form.supplierId} onValueChange={(v) => setForm((f) => ({ ...f, supplierId: v }))}>
+                <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">— None —</SelectItem>
+                  {suppliers.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <AddSupplierButton defaultType="HOTEL" onCreated={onSupplierAdded} />
+            </div>
+          </Field>
+          <Field label="Confirmation Number">
+            <Input
+              value={form.confirmationNumber}
+              onChange={(e) => setForm((f) => ({ ...f, confirmationNumber: e.target.value }))}
+            />
+          </Field>
+          <Field label="Status">
+            <Select value={form.status} onValueChange={(v) => setForm((f) => ({ ...f, status: v }))}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {SERVICE_STATUSES.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Show on Voucher">
+            <Select
+              value={form.showOnVoucher ? "YES" : "NO"}
+              onValueChange={(v) => setForm((f) => ({ ...f, showOnVoucher: v === "YES" }))}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {YES_NO.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field label="Comments" className="sm:col-span-2 lg:col-span-3 xl:col-span-4">
+            <Textarea
+              rows={2}
+              value={form.comments}
+              onChange={(e) => setForm((f) => ({ ...f, comments: e.target.value }))}
+              placeholder="Internal comments…"
+            />
+          </Field>
+        </div>
+
+        <Separator className="my-4" />
+
+        <h5 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Pricing
+        </h5>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="rounded-lg border border-border bg-muted/20 p-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Cost Price (Net)
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Cost / Night">
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={form.costPerNight}
+                  onChange={(e) => setForm((f) => ({ ...f, costPerNight: e.target.value }))}
+                />
+              </Field>
+              <Field label="Total Cost">
+                <Input value={pricing.totalCost.toFixed(2)} readOnly className="bg-muted/50 font-mono text-sm" />
+              </Field>
+            </div>
+          </div>
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-primary">
+              Selling Price (to customer)
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Sell / Night">
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={form.sellPerNight}
+                  onChange={(e) => setForm((f) => ({ ...f, sellPerNight: e.target.value }))}
+                />
+              </Field>
+              <Field label="Total Sell">
+                <Input value={pricing.totalSell.toFixed(2)} readOnly className="bg-card font-mono text-sm" />
+              </Field>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/30 px-4 py-3">
+        <Button variant="outline" onClick={onCancel}>Cancel</Button>
+        <Button onClick={onSave} disabled={saving} className="bg-emerald-600 text-white hover:bg-emerald-700">
+          {saving ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Check className="mr-1.5 size-4" />}
+          {isEdit ? "Save Changes" : "Add Hotel"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* Payments Tab                                                      */
+/* ================================================================== */
+
+interface PaymentFormState {
+  id?: string;
+  amount: string;
+  paymentMethod: string;
+  paymentDate: string;
+  reference: string;
+  status: string;
+  notes: string;
+}
+
+function emptyPaymentForm(currency: string): PaymentFormState {
+  void currency;
+  return {
+    amount: "0",
+    paymentMethod: "CASH",
+    paymentDate: toInputDate(new Date().toISOString()),
+    reference: "",
+    status: "RECEIVED",
+    notes: "",
+  };
+}
+
+function PaymentsTab({
+  reservation,
+  onUpdated,
+}: {
+  reservation: ReservationT;
+  onUpdated: (r: ReservationT) => void;
+}) {
+  const [mode, setMode] = useState<"list" | "form">("list");
+  const [form, setForm] = useState<PaymentFormState>(emptyPaymentForm(reservation.currency));
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<PaymentT | null>(null);
+
+  function openAdd() {
+    setForm(emptyPaymentForm(reservation.currency));
+    setMode("form");
+  }
+
+  async function save() {
+    if (!(num(form.amount) > 0)) {
+      toast.error("Amount must be greater than zero");
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        ...form,
+        amount: num(form.amount),
+        currency: reservation.currency,
+        paymentDate: form.paymentDate ? new Date(form.paymentDate).toISOString() : null,
+      };
+      const res = await fetch(`/api/agency/reservations/${reservation.id}/payments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to save");
+      toast.success("Payment recorded");
+      const r = await fetch(`/api/agency/reservations/${reservation.id}`);
+      const d = await r.json();
+      if (r.ok) onUpdated(d.reservation);
+      setMode("list");
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to save payment");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(p: PaymentT) {
+    try {
+      const res = await fetch(`/api/agency/reservations/${reservation.id}/payments/${p.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed to delete");
+      toast.success("Payment removed");
+      const r = await fetch(`/api/agency/reservations/${reservation.id}`);
+      const d = await r.json();
+      if (r.ok) onUpdated(d.reservation);
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to delete payment");
+    } finally {
+      setConfirmDelete(null);
+    }
+  }
+
+  return (
+    <div>
+      {mode === "form" ? (
+        <div>
+          <ServiceFormHeader
+            title="Add Payment"
+            updatedAt={new Date().toISOString()}
+            updatedBy="Agent"
+            onClose={() => setMode("list")}
+          />
+          <div className="p-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Field label="Amount" required>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={form.amount}
+                  onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+                />
+              </Field>
+              <Field label="Payment Method">
+                <Select value={form.paymentMethod} onValueChange={(v) => setForm((f) => ({ ...f, paymentMethod: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_METHODS.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Status">
+                <Select value={form.status} onValueChange={(v) => setForm((f) => ({ ...f, status: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_STATUSES.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Payment Date">
+                <Input
+                  type="date"
+                  value={form.paymentDate}
+                  onChange={(e) => setForm((f) => ({ ...f, paymentDate: e.target.value }))}
+                />
+              </Field>
+              <Field label="Reference" className="sm:col-span-2">
+                <Input
+                  value={form.reference}
+                  onChange={(e) => setForm((f) => ({ ...f, reference: e.target.value }))}
+                  placeholder="Bank transfer ref / gateway ref"
+                />
+              </Field>
+              <Field label="Notes" className="sm:col-span-2 lg:col-span-3">
+                <Textarea
+                  rows={2}
+                  value={form.notes}
+                  onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                />
+              </Field>
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/30 px-4 py-3">
+            <Button variant="outline" onClick={() => setMode("list")}>Cancel</Button>
+            <Button onClick={save} disabled={saving} className="bg-emerald-600 text-white hover:bg-emerald-700">
+              {saving ? <Loader2 className="mr-1.5 size-4 animate-spin" /> : <Check className="mr-1.5 size-4" />}
+              Save Payment
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <ServiceListHeader
+            title="Payments"
+            subtitle={`Paid ${money(reservation.currency, reservation.amountPaid)} of ${money(reservation.currency, reservation.totalAmount)}`}
+            onAdd={openAdd}
+            addLabel="Add Payment"
+          />
+          <div className="p-4">
+            {reservation.payments.length === 0 ? (
+              <EmptyServiceState
+                icon={Banknote}
+                message="No payments recorded"
+                hint="Click 'Add Payment' to record the first payment for this reservation."
+                cta={{ label: "Add Payment", onClick: openAdd }}
+              />
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/60 hover:bg-muted/60">
+                      <TableHead className="min-w-[150px]">Date</TableHead>
+                      <TableHead className="min-w-[140px]">Method</TableHead>
+                      <TableHead className="min-w-[120px]">Status</TableHead>
+                      <TableHead className="min-w-[180px]">Reference</TableHead>
+                      <TableHead className="min-w-[130px] text-right">Amount</TableHead>
+                      <TableHead className="w-[80px] text-center"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {reservation.payments.map((p) => {
+                      const methodMeta = PAYMENT_METHODS.find((m) => m.value === p.paymentMethod);
+                      const statusMeta = PAYMENT_STATUSES.find((s) => s.value === p.status);
+                      return (
+                        <TableRow key={p.id} className="hover:bg-muted/40">
+                          <TableCell><span className="text-sm">{fmtDate(p.paymentDate)}</span></TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{methodMeta?.label ?? p.paymentMethod}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                p.status === "RECEIVED" && "bg-emerald-100 text-emerald-800 border-emerald-200",
+                                p.status === "PENDING" && "bg-amber-100 text-amber-800 border-amber-200",
+                                p.status === "REFUNDED" && "bg-rose-100 text-rose-800 border-rose-200",
+                              )}
+                            >
+                              {statusMeta?.label ?? p.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-mono text-sm text-muted-foreground">{p.reference ?? "—"}</span>
+                          </TableCell>
+                          <TableCell className="text-right font-mono text-sm font-semibold text-emerald-700">
+                            {money(p.currency, p.amount)}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="size-8 text-rose-500 hover:bg-rose-50"
+                              onClick={() => setConfirmDelete(p)}
+                              title="Remove payment"
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <AlertDialog open={!!confirmDelete} onOpenChange={(o) => !o && setConfirmDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove payment?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove the payment of {confirmDelete && money(confirmDelete.currency, confirmDelete.amount)}.
+              The reservation balance will be recalculated.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-rose-600 text-white hover:bg-rose-700"
+              onClick={() => confirmDelete && remove(confirmDelete)}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* Empty state shared component                                      */
+/* ================================================================== */
+
+function EmptyServiceState({
+  icon: Icon,
+  message,
+  hint,
+  cta,
+}: {
+  icon: any;
+  message: string;
+  hint: string;
+  cta?: { label: string; onClick: () => void };
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted/20 p-10 text-center">
+      <div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+        <Icon className="size-5" />
+      </div>
+      <p className="text-sm font-medium text-foreground">{message}</p>
+      <p className="max-w-md text-xs text-muted-foreground">{hint}</p>
+      {cta && (
+        <Button size="sm" onClick={cta.onClick} className="mt-2 bg-primary text-primary-foreground hover:bg-primary/90">
+          <Plus className="mr-1.5 size-4" />
+          {cta.label}
+        </Button>
+      )}
     </div>
   );
 }

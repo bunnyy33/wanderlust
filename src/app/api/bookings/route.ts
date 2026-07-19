@@ -6,6 +6,35 @@ import { sendEmail, bookingConfirmationEmail } from "@/lib/mailer";
 import { getSessionUser } from "@/lib/customer-auth";
 import { computeFraudScore, getClientIp, getClientUserAgent } from "@/lib/fraud";
 
+// Generate a unique WL-RES-XXXXXX reference (6-digit suffix, retry on collision)
+async function pickUniqueAgencyReference(): Promise<string> {
+  for (let i = 0; i < 8; i++) {
+    const n = Math.floor(100000 + Math.random() * 900000);
+    const ref = `WL-RES-${n}`;
+    const exists = await db.reservation.findUnique({
+      where: { reference: ref },
+      select: { id: true },
+    });
+    if (!exists) return ref;
+  }
+  // Fallback: append a random 4-char suffix
+  return `WL-RES-${Date.now().toString().slice(-6)}`;
+}
+
+// Generate a unique WL-INV-XXXXXX invoice number
+async function pickUniqueAgencyInvoice(): Promise<string> {
+  for (let i = 0; i < 8; i++) {
+    const n = Math.floor(100000 + Math.random() * 900000);
+    const inv = `WL-INV-${n}`;
+    const exists = await db.reservation.findUnique({
+      where: { invoiceNumber: inv },
+      select: { id: true },
+    });
+    if (!exists) return inv;
+  }
+  return `WL-INV-${Date.now().toString().slice(-6)}`;
+}
+
 // GET /api/bookings?email=  — list bookings by customer email
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -179,6 +208,143 @@ export async function POST(req: NextRequest) {
     type: "BOOKING_CONFIRMATION",
     relatedRef: reference,
   }).catch((e) => console.error("Booking email error:", e));
+
+  // ----------------------------------------------------------------
+  // Sync into the agency booking system — website bookings should
+  // appear in the agency dashboard automatically. We create a
+  // Reservation (master invoice), a Tour/Hotel booking, and a
+  // Payment record (since the website checkout already collected
+  // payment online). The reservation is set to CUSTOMER_CONFIRMED.
+  // ----------------------------------------------------------------
+  try {
+    const agencyRef = await pickUniqueAgencyReference();
+    const agencyInvoice = await pickUniqueAgencyInvoice();
+
+    const totalNum = parseFloat(totalAmount) || 0;
+    const checkIn = new Date(checkInDate);
+    const checkOut = checkOutDate ? new Date(checkOutDate) : null;
+
+    const reservation = await db.reservation.create({
+      data: {
+        reference: agencyRef,
+        invoiceNumber: agencyInvoice,
+        customerName,
+        customerEmail: customerEmail.toLowerCase(),
+        customerPhone: customerPhone ?? null,
+        isGuest: true, // website bookings are guest checkouts by default
+        orderDate: new Date(),
+        invoiceDate: new Date(),
+        bookingStatus: "CUSTOMER_CONFIRMED", // paid online → already confirmed by customer
+        invoiceType: "TAXABLE",
+        currency: "USD",
+        remarks: `Auto-synced from website booking ${reference}.`,
+        termsAccepted: true,
+      },
+    });
+
+    // Add a Tour or Hotel booking matching the website line item
+    if (type === "EXPERIENCE" && booking.experience) {
+      const exp = booking.experience;
+      const adults = parseInt(guests, 10) || 1;
+      await db.tourBooking.create({
+        data: {
+          reservationId: reservation.id,
+          tourId: exp.id,
+          tourName: exp.title,
+          tourOption: null,
+          transferOption: "WITHOUT_TRANSFER",
+          pickupLocation: null,
+          tourDate: checkIn,
+          pickupTime: null,
+          timeSlot: null,
+          noOfAdults: adults,
+          noOfChildren: 0,
+          supplierId: null,
+          supplierName: exp.vendorName ?? null,
+          confirmationNumber: reference,
+          status: "CUSTOMER_CONFIRMED",
+          comments: `Auto-synced from website booking ${reference}.`,
+          costUnit: "PER_PERSON",
+          // Cost = unit price (what we pay the supplier, approximated)
+          adultCostRate: parseFloat(unitPrice) || 0,
+          childCostRate: 0,
+          carCostRate: 0,
+          // Sell = total amount the customer paid (incl. taxes)
+          adultSellRate: totalNum / Math.max(1, adults),
+          childSellRate: 0,
+          carSellRate: 0,
+          showOnVoucher: true,
+        },
+      });
+    } else if (type === "HOTEL" && booking.hotel) {
+      const hotel = booking.hotel;
+      const nightsNum = parseInt(nights, 10) || 1;
+      const sellPerNight = nightsNum > 0 ? totalNum / nightsNum : totalNum;
+      await db.hotelBooking.create({
+        data: {
+          reservationId: reservation.id,
+          hotelId: hotel.id,
+          hotelName: hotel.name,
+          roomType: roomTypeName ?? "Standard",
+          mealPlan: "BB",
+          checkInDate: checkIn,
+          checkOutDate: checkOut ?? new Date(checkIn.getTime() + 86400000),
+          nights: nightsNum,
+          noOfRooms: 1,
+          noOfAdults: parseInt(guests, 10) || 1,
+          noOfChildren: 0,
+          supplierId: null,
+          supplierName: null,
+          confirmationNumber: reference,
+          status: "CUSTOMER_CONFIRMED",
+          comments: `Auto-synced from website booking ${reference}.`,
+          costPerNight: parseFloat(unitPrice) || 0,
+          sellPerNight,
+          showOnVoucher: true,
+        },
+      });
+    }
+
+    // Record the online payment so the agency dashboard shows it as paid
+    await db.payment.create({
+      data: {
+        reservationId: reservation.id,
+        amount: totalNum,
+        currency: "USD",
+        paymentMethod: "ONLINE",
+        paymentDate: new Date(),
+        reference,
+        status: "RECEIVED",
+        notes: `Auto-synced from website booking ${reference}.`,
+        receivedBy: null,
+      },
+    });
+
+    // Re-calc totals (subTotal, VAT, balanceDue) for the new reservation
+    const fresh = await db.reservation.findUnique({
+      where: { id: reservation.id },
+      include: { tours: true, transports: true, hotels: true, payments: true },
+    });
+    if (fresh) {
+      const subTotal =
+        fresh.tours.reduce((s, t) => s + (t.totalSell || 0), 0) +
+        fresh.transports.reduce((s, t) => s + (t.sellRate || 0), 0) +
+        fresh.hotels.reduce((s, t) => s + (t.totalSell || 0), 0);
+      const vatAmount = fresh.invoiceType === "TAXABLE" ? subTotal * 0.05 : 0;
+      const totalAmount = subTotal + vatAmount;
+      const amountPaid = fresh.payments
+        .filter((p) => p.status !== "REFUNDED")
+        .reduce((s, p) => s + (p.amount || 0), 0);
+      const balanceDue = Math.max(0, totalAmount - amountPaid);
+      await db.reservation.update({
+        where: { id: reservation.id },
+        data: { subTotal, vatAmount, totalAmount, amountPaid, balanceDue },
+      });
+    }
+  } catch (syncErr) {
+    // Sync failures must NOT break the website checkout flow
+    console.error("Agency sync error:", syncErr);
+  }
 
   return NextResponse.json({
     booking: serializeBooking({ ...booking, specialRequests: booking.specialRequests || (roomTypeName ? `Room: ${roomTypeName}` : null) }),

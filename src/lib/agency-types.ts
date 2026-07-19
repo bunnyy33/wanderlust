@@ -200,6 +200,7 @@ export interface ReservationListItemT {
   saleById?: string | null;
   saleByName?: string | null;
   serviceCount: number;
+  firstServiceName?: string | null;
   createdAt: string;
 }
 
@@ -414,6 +415,21 @@ export function serializeReservation(r: any): ReservationT {
 }
 
 export function serializeReservationListItem(r: any): ReservationListItemT {
+  const tours: any[] = r.tours ?? [];
+  const transports: any[] = r.transports ?? [];
+  const hotels: any[] = r.hotels ?? [];
+
+  let firstServiceName: string | null = null;
+  if (tours[0]) firstServiceName = tours[0].tourName ?? null;
+  if (!firstServiceName && hotels[0]) firstServiceName = hotels[0].hotelName ?? null;
+  if (!firstServiceName && transports[0]) {
+    const t = transports[0];
+    firstServiceName = [t.pickupLocation, t.dropoffLocation]
+      .filter(Boolean)
+      .join(" → ");
+    if (!firstServiceName) firstServiceName = "Transfer";
+  }
+
   return {
     id: r.id,
     reference: r.reference,
@@ -429,8 +445,8 @@ export function serializeReservationListItem(r: any): ReservationListItemT {
     balanceDue: r.balanceDue,
     saleById: r.saleById ?? null,
     saleByName: r.employee?.name ?? null,
-    serviceCount:
-      (r.tours?.length ?? 0) + (r.transports?.length ?? 0) + (r.hotels?.length ?? 0),
+    serviceCount: tours.length + transports.length + hotels.length,
+    firstServiceName,
     createdAt: r.createdAt?.toISOString?.() ?? r.createdAt,
   };
 }
