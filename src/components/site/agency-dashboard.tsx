@@ -711,7 +711,7 @@ export function AgencyDashboard({ onExit }: { onExit?: () => void }) {
     );
   }
   const handleView = (id: string) => {
-    // Eye button: opens the detail page in view-only mode (no status change)
+    // Eye button: same as Open — opens the detail page
     setActiveReservationId(id);
   };
 
