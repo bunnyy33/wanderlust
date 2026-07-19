@@ -710,7 +710,21 @@ export function AgencyDashboard({ onExit }: { onExit?: () => void }) {
       />
     );
   }
-  return <BookingList onOpen={handleOpen} onExit={onExit} refreshKey={listKey} />;
+  const handleView = (id: string) => {
+    // Eye button: opens the detail page in view-only mode (no status change)
+    setActiveReservationId(id);
+  };
+
+  if (activeReservationId) {
+    return (
+      <ReservationDetail
+        reservationId={activeReservationId}
+        onBack={handleBack}
+        onExit={onExit}
+      />
+    );
+  }
+  return <BookingList onOpen={handleOpen} onView={handleView} onExit={onExit} refreshKey={listKey} />;
 }
 
 /* ================================================================== */
@@ -720,9 +734,11 @@ export function AgencyDashboard({ onExit }: { onExit?: () => void }) {
 function BookingList({
   onOpen,
   onExit,
+  onView,
   refreshKey,
 }: {
   onOpen: (id: string) => void;
+  onView: (id: string) => void;
   onExit?: () => void;
   refreshKey: number;
 }) {
@@ -915,8 +931,8 @@ function BookingList({
                           size="icon"
                           variant="ghost"
                           className="size-8 text-primary hover:bg-primary/10"
-                          onClick={() => onOpen(r.id)}
-                          title="View reservation"
+                          onClick={() => onView(r.id)}
+                          title="View fraud & booking details"
                         >
                           <Eye className="size-4" />
                         </Button>
@@ -1284,7 +1300,7 @@ function ReservationDetailsSection({
             <Select value={form.saleById} onValueChange={(v) => setForm({ ...form, saleById: v })}>
               <SelectTrigger><SelectValue placeholder="Select agent" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="">— None —</SelectItem>
+                <SelectItem value="__none__">— None —</SelectItem>
                 {employees.map((e) => (
                   <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
                 ))}
@@ -2330,7 +2346,7 @@ function TourFormCard({
                 <Select value={form.supplierId} onValueChange={(v) => setForm((f) => ({ ...f, supplierId: v }))}>
                   <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">— None —</SelectItem>
+                    <SelectItem value="__none__">— None —</SelectItem>
                     {suppliers.map((s) => (
                       <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                     ))}
@@ -2903,7 +2919,7 @@ function TransportFormCard({
               <Select value={form.supplierId} onValueChange={(v) => setForm((f) => ({ ...f, supplierId: v }))}>
                 <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">— None —</SelectItem>
+                  <SelectItem value="__none__">— None —</SelectItem>
                   {suppliers.map((s) => (
                     <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                   ))}
@@ -3397,7 +3413,7 @@ function HotelFormCard({
               <Select value={form.supplierId} onValueChange={(v) => setForm((f) => ({ ...f, supplierId: v }))}>
                 <SelectTrigger><SelectValue placeholder="Select supplier" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">— None —</SelectItem>
+                  <SelectItem value="__none__">— None —</SelectItem>
                   {suppliers.map((s) => (
                     <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                   ))}
