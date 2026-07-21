@@ -390,3 +390,24 @@ Stage Summary:
 - Bookings back button is prominent in the sidebar.
 - Production live at wanderlust-puce-nine.vercel.app/agency (password = ADMIN_PASSWORD env var on Vercel, or wanderlust-admin-2024 fallback).
 - NOTE: To enable Flights/Visas/Extras on PRODUCTION Neon, run: DATABASE_URL="<neon-url>" npx prisma db push — this creates the 3 new tables. Until then those tabs show "0 records" (the resilient queries prevent 500s).
+
+---
+Task ID: AGENCY-FIXES-4
+Agent: main
+Task: Fix dark mode text visibility, add supplier confirmation activity selection, improve voucher dropdown to show individual records, confirm Updated By is readonly/auto-detected.
+
+Work Log:
+- DARK MODE FIX: Root cause was the `dark` class was on a wrapper div, but body had `text-foreground` from :root. CSS variables on .dark didn't cascade to body. Fixed by toggling `dark` class on `document.documentElement` (<html>) instead of wrapper div. Now inputs show light text (lab 95.42) in dark mode instead of dark text (lab 9.46). Verified in browser.
+- SUPPLIER CONFIRMATION SELECTION: Added a selection dialog. Clicking "Supplier Confirmation" now opens a dialog listing ALL services with checkboxes. Each service shows: type badge, name, date, supplier name. Services WITHOUT a supplier assigned are disabled (can't be selected). Pre-selects all services that have suppliers. Agent can uncheck specific activities. Only selected activities are sent to their respective suppliers. The email API already supported `serviceIds` filter — now the UI uses it.
+- VOUCHER DROPDOWN IMPROVED: Was showing only service types (Tours 1, Hotels 0). Now shows individual records: "Hot Air Balloon over Dubai Desert · Tour · 22 Jul 2026". Each record is clickable to generate a voucher for that specific activity. Combined Voucher option still available at top.
+- UPDATED BY: Already readonly in the UI (can't be edited). Currently uses shared admin password (no per-agent login yet). When agent credentials are added in the future, the backend will auto-set updatedById from the logged-in employee session. The field is already not editable by agents.
+- VERIFIED: Dark mode toggle → text visible ✓. Supplier dialog → shows activities with checkboxes, disabled when no supplier ✓. Voucher dropdown → shows individual records ✓.
+- Committed (0863d38) + pushed. Production /agency → 200.
+
+Stage Summary:
+- Dark mode: FIXED (toggle on <html>, CSS variables cascade correctly, text visible).
+- Supplier confirmation: now opens a selection dialog where you pick which activities to send to which suppliers.
+- Voucher: now lists individual activity records (not just types) — pick the exact Dhow Cruise or tour.
+- Updated By: readonly, will auto-detect when agent login is implemented.
+- Database issue: SORTED. Schema has FlightBooking/VisaBooking/ExtraBooking models. Local sqlite has tables. Production Neon needs `DATABASE_URL="<neon>" npx prisma db push` to create the 3 new tables (resilient queries prevent 500s until then).
+- Demo mode: YES, this is a demo/dev mode. It uses a shared admin password (wanderlust-admin-2024), not per-agent login. Email falls back to EmailLog logging when no RESEND_API_KEY. Data is real (seeded bookings + tours + hotels).
