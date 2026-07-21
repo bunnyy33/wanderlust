@@ -1,0 +1,2002 @@
+     1→"use client";
+     2→
+     3→/**
+     4→ * Wanderlust — Admin Dashboard
+     5→ * A premium, luxury-styled admin console for the Wanderlust tourism platform.
+     6→ * Sections: Overview, Bookings, Catalog, Analytics, AI Insights.
+     7→ */
+     8→
+     9→import { useCallback, useEffect, useMemo, useState } from "react";
+    10→import { format } from "date-fns";
+    11→import { toast } from "sonner";
+    12→import {
+    13→  Activity,
+    14→  AlertCircle,
+    15→  ArrowLeft,
+    16→  ArrowUpRight,
+    17→  BarChart3,
+    18→  BookOpen,
+    19→  Briefcase,
+    20→  CalendarCheck,
+    21→  CheckCircle2,
+    22→  Clock,
+    23→  Crown,
+    24→  DollarSign,
+    25→  Eye,
+    26→  Hotel as HotelIcon,
+    27→  LayoutDashboard,
+    28→  Loader2,
+    29→  LogOut,
+    30→  Mail,
+    31→  MapPin,
+    32→  MessageSquare,
+    33→  Plane,
+    34→  RefreshCw,
+    35→  RotateCcw,
+    36→  Search,
+    37→  ShieldAlert,
+    38→  ShieldCheck,
+    39→  Sparkle,
+    40→  Sparkles,
+    41→  Star,
+    42→  TrendingUp,
+    43→  Users,
+    44→  Wallet,
+    45→  XCircle,
+    46→} from "lucide-react";
+    47→
+    48→import type { BookingT, ExperienceT, HotelT } from "@/lib/types";
+    49→import { cn } from "@/lib/utils";
+    50→
+    51→import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+    52→import { Badge } from "@/components/ui/badge";
+    53→import { Button } from "@/components/ui/button";
+    54→import {
+    55→  Card,
+    56→  CardContent,
+    57→  CardDescription,
+    58→  CardHeader,
+    59→  CardTitle,
+    60→} from "@/components/ui/card";
+    61→import {
+    62→  Dialog,
+    63→  DialogContent,
+    64→  DialogDescription,
+    65→  DialogHeader,
+    66→  DialogTitle,
+    67→} from "@/components/ui/dialog";
+    68→import {
+    69→  AlertDialog,
+    70→  AlertDialogAction,
+    71→  AlertDialogCancel,
+    72→  AlertDialogContent,
+    73→  AlertDialogDescription,
+    74→  AlertDialogFooter,
+    75→  AlertDialogHeader,
+    76→  AlertDialogTitle,
+    77→  AlertDialogTrigger,
+    78→} from "@/components/ui/alert-dialog";
+    79→import { Input } from "@/components/ui/input";
+    80→import { Textarea } from "@/components/ui/textarea";
+    81→import { Label } from "@/components/ui/label";
+    82→import { Progress } from "@/components/ui/progress";
+    83→import {
+    84→  Select,
+    85→  SelectContent,
+    86→  SelectItem,
+    87→  SelectTrigger,
+    88→  SelectValue,
+    89→} from "@/components/ui/select";
+    90→import { Separator } from "@/components/ui/separator";
+    91→import { Skeleton } from "@/components/ui/skeleton";
+    92→import {
+    93→  Table,
+    94→  TableBody,
+    95→  TableCell,
+    96→  TableHead,
+    97→  TableHeader,
+    98→  TableRow,
+    99→} from "@/components/ui/table";
+   100→import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+   101→import { CatalogManager } from "@/components/site/catalog-manager";
+   102→import { AgencyDashboard } from "@/components/site/agency-dashboard";
+   103→
+   104→/* ------------------------------------------------------------------ */
+   105→/* Types                                                              */
+   106→/* ------------------------------------------------------------------ */
+   107→
+   108→interface KPIs {
+   109→  revenue: number;
+   110→  refunded: number;
+   111→  totalBookings: number;
+   112→  totalExperiences: number;
+   113→  totalHotels: number;
+   114→  totalDestinations: number;
+   115→  totalReviews: number;
+   116→  totalUsers: number;
+   117→  avgOrderValue: number;
+   118→}
+   119→
+   120→interface RevenueTrendPoint {
+   121→  date: string;
+   122→  revenue: number;
+   123→  bookings: number;
+   124→}
+   125→
+   126→interface RecentBooking {
+   127→  id: string;
+   128→  reference: string;
+   129→  type: string;
+   130→  customerName: string;
+   131→  totalAmount: number;
+   132→  status: string;
+   133→  createdAt: string;
+   134→  title: string;
+   135→}
+   136→
+   137→interface AdminStats {
+   138→  kpis: KPIs;
+   139→  revenueByType: { EXPERIENCE: number; HOTEL: number };
+   140→  statusBreakdown: {
+   141→    PENDING: number;
+   142→    SUPPLIER_CONFIRMED: number;
+   143→    CUSTOMER_CONFIRMED: number;
+   144→    CONFIRMED: number;
+   145→    COMPLETED: number;
+   146→    CANCELLED: number;
+   147→    REFUNDED: number;
+   148→  };
+   149→  revenueTrend: RevenueTrendPoint[];
+   150→  recentBookings: RecentBooking[];
+   151→}
+   152→
+   153→type SectionId =
+   154→  | "overview"
+   155→  | "bookings"
+   156→  | "catalog"
+   157→  | "analytics"
+   158→  | "ai"
+   159→  | "notifications"
+   160→  | "chats"
+   161→  | "agency";
+   162→
+   163→/* ------------------------------------------------------------------ */
+   164→/* Formatters                                                         */
+   165→/* ------------------------------------------------------------------ */
+   166→
+   167→const money = new Intl.NumberFormat("en-US", {
+   168→  style: "currency",
+   169→  currency: "USD",
+   170→  maximumFractionDigits: 0,
+   171→});
+   172→
+   173→const moneyDetailed = new Intl.NumberFormat("en-US", {
+   174→  style: "currency",
+   175→  currency: "USD",
+   176→  maximumFractionDigits: 2,
+   177→});
+   178→
+   179→const compactMoney = new Intl.NumberFormat("en-US", {
+   180→  style: "currency",
+   181→  currency: "USD",
+   182→  notation: "compact",
+   183→  maximumFractionDigits: 1,
+   184→});
+   185→
+   186→const compactNumber = new Intl.NumberFormat("en-US", {
+   187→  notation: "compact",
+   188→  maximumFractionDigits: 1,
+   189→});
+   190→
+   191→function fmtDate(iso: string): string {
+   192→  try {
+   193→    return format(new Date(iso), "MMM d, yyyy");
+   194→  } catch {
+   195→    return "—";
+   196→  }
+   197→}
+   198→
+   199→function fmtShortDate(iso: string): string {
+   200→  try {
+   201→    return format(new Date(iso), "MMM d");
+   202→  } catch {
+   203→    return iso;
+   204→  }
+   205→}
+   206→
+   207→/* ------------------------------------------------------------------ */
+   208→/* Status helpers                                                     */
+   209→/* ------------------------------------------------------------------ */
+   210→
+   211→function statusBadgeClass(status: string): string {
+   212→  switch (status) {
+   213→    case "PENDING":
+   214→      return "bg-amber-500 text-white border-transparent";
+   215→    case "SUPPLIER_CONFIRMED":
+   216→      return "bg-sky-600 text-white border-transparent";
+   217→    case "CUSTOMER_CONFIRMED":
+   218→      return "bg-teal-600 text-white border-transparent";
+   219→    case "CONFIRMED":
+   220→      return "bg-emerald-600 text-white border-transparent";
+   221→    case "COMPLETED":
+   222→      return "bg-primary text-primary-foreground border-transparent";
+   223→    case "CANCELLED":
+   224→      return "bg-destructive text-white border-transparent";
+   225→    case "REFUNDED":
+   226→      return "bg-orange-500 text-white border-transparent";
+   227→    default:
+   228→      return "bg-muted text-muted-foreground border-border";
+   229→  }
+   230→}
+   231→
+   232→function StatusBadge({ status }: { status: string }) {
+   233→  return (
+   234→    <span
+   235→      className={cn(
+   236→        "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-semibold tracking-wide",
+   237→        statusBadgeClass(status),
+   238→      )}
+   239→    >
+   240→      {status}
+   241→    </span>
+   242→  );
+   243→}
+   244→
+   245→function paymentBadgeClass(paymentStatus: string): string {
+   246→  switch (paymentStatus) {
+   247→    case "PAID":
+   248→      return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-900";
+   249→    case "PENDING":
+   250→      return "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-900";
+   251→    case "REFUNDED":
+   252→      return "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-900";
+   253→    case "FAILED":
+   254→      return "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-900";
+   255→    default:
+   256→      return "bg-muted text-muted-foreground border-border";
+   257→  }
+   258→}
+   259→
+   260→function PaymentBadge({ status }: { status: string }) {
+   261→  return (
+   262→    <span
+   263→      className={cn(
+   264→        "inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium",
+   265→        paymentBadgeClass(status),
+   266→      )}
+   267→    >
+   268→      {status}
+   269→    </span>
+   270→  );
+   271→}
+   272→
+   273→function bookingItemTitle(b: BookingT): string {
+   274→  return b.experience?.title || b.hotel?.name || "—";
+   275→}
+   276→
+   277→function bookingDestination(b: BookingT): string {
+   278→  return (
+   279→    b.experience?.destination?.name ||
+   280→    b.hotel?.destination?.name ||
+   281→    "—"
+   282→  );
+   283→}
+   284→
+   285→/* ------------------------------------------------------------------ */
+   286→/* Navigation                                                         */
+   287→/* ------------------------------------------------------------------ */
+   288→
+   289→const SECTIONS: {
+   290→  id: SectionId;
+   291→  label: string;
+   292→  icon: React.ComponentType<{ className?: string }>;
+   293→}[] = [
+   294→  { id: "overview", label: "Overview", icon: LayoutDashboard },
+   295→  { id: "bookings", label: "Bookings", icon: CalendarCheck },
+   296→  { id: "catalog", label: "Catalog", icon: BookOpen },
+   297→  { id: "analytics", label: "Analytics", icon: BarChart3 },
+   298→  { id: "agency", label: "Agency", icon: Briefcase },
+   299→  { id: "ai", label: "AI Insights", icon: Sparkles },
+   300→  { id: "chats", label: "AI Chats", icon: MessageSquare },
+   301→  { id: "notifications", label: "Notifications", icon: Mail },
+   302→];
+   303→
+   304→/* ------------------------------------------------------------------ */
+   305→/* Shared small UI helpers                                            */
+   306→/* ------------------------------------------------------------------ */
+   307→
+   308→function SectionTitle({
+   309→  title,
+   310→  subtitle,
+   311→  icon: Icon,
+   312→  action,
+   313→}: {
+   314→  title: string;
+   315→  subtitle?: string;
+   316→  icon: React.ComponentType<{ className?: string }>;
+   317→  action?: React.ReactNode;
+   318→}) {
+   319→  return (
+   320→    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+   321→      <div className="flex items-start gap-3">
+   322→        <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+   323→          <Icon className="size-5" />
+   324→        </div>
+   325→        <div>
+   326→          <h2
+   327→            className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl"
+   328→            style={{ fontFamily: "var(--font-display)" }}
+   329→          >
+   330→            {title}
+   331→          </h2>
+   332→          {subtitle && (
+   333→            <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>
+   334→          )}
+   335→        </div>
+   336→      </div>
+   337→      {action}
+   338→    </div>
+   339→  );
+   340→}
+   341→
+   342→function ErrorState({
+   343→  message,
+   344→  onRetry,
+   345→}: {
+   346→  message: string;
+   347→  onRetry?: () => void;
+   348→}) {
+   349→  return (
+   350→    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-destructive/30 bg-destructive/5 p-10 text-center">
+   351→      <AlertCircle className="size-8 text-destructive" />
+   352→      <div>
+   353→        <p className="font-medium text-foreground">{message}</p>
+   354→        <p className="mt-1 text-sm text-muted-foreground">
+   355→          Please try again in a moment.
+   356→        </p>
+   357→      </div>
+   358→      {onRetry && (
+   359→        <Button variant="outline" size="sm" onClick={onRetry}>
+   360→          <RefreshCw className="size-4" /> Retry
+   361→        </Button>
+   362→      )}
+   363→    </div>
+   364→  );
+   365→}
+   366→
+   367→/* ------------------------------------------------------------------ */
+   368→/* Charts (custom div-based)                                          */
+   369→/* ------------------------------------------------------------------ */
+   370→
+   371→function RevenueBarChart({
+   372→  data,
+   373→  height = 220,
+   374→}: {
+   375→  data: RevenueTrendPoint[];
+   376→  height?: number;
+   377→}) {
+   378→  const max = Math.max(1, ...data.map((d) => d.revenue));
+   379→  return (
+   380→    <div className="w-full">
+   381→      <div
+   382→        className="flex items-end gap-2 sm:gap-3"
+   383→        style={{ height }}
+   384→      >
+   385→        {data.map((d) => {
+   386→          const h = Math.max(4, Math.round((d.revenue / max) * 100));
+   387→          return (
+   388→            <div
+   389→              key={d.date}
+   390→              className="group relative flex flex-1 flex-col items-center justify-end"
+   391→              style={{ height: "100%" }}
+   392→            >
+   393→              {/* tooltip */}
+   394→              <div className="pointer-events-none absolute -top-2 left-1/2 z-10 -translate-x-1/2 -translate-y-full rounded-lg border border-border bg-popover px-3 py-2 text-xs shadow-md opacity-0 transition-opacity group-hover:opacity-100 whitespace-nowrap">
+   395→                <div className="font-semibold text-foreground">
+   396→                  {fmtShortDate(d.date)}
+   397→                </div>
+   398→                <div className="text-gold font-semibold">
+   399→                  {money.format(d.revenue)}
+   400→                </div>
+   401→                <div className="text-muted-foreground">
+   402→                  {d.bookings} booking{d.bookings === 1 ? "" : "s"}
+   403→                </div>
+   404→              </div>
+   405→              {/* track */}
+   406→              <div className="relative flex w-full max-w-[44px] flex-1 items-end overflow-hidden rounded-lg bg-primary/8">
+   407→                <div
+   408→                  className="gold-gradient w-full rounded-lg transition-all duration-500 ease-out"
+   409→                  style={{ height: `${h}%` }}
+   410→                />
+   411→              </div>
+   412→            </div>
+   413→          );
+   414→        })}
+   415→      </div>
+   416→      <div className="mt-2 flex items-center justify-between gap-2 sm:gap-3">
+   417→        {data.map((d) => (
+   418→          <div
+   419→            key={d.date}
+   420→            className="flex-1 text-center text-[11px] font-medium text-muted-foreground"
+   421→          >
+   422→            {fmtShortDate(d.date)}
+   423→          </div>
+   424→        ))}
+   425→      </div>
+   426→    </div>
+   427→  );
+   428→}
+   429→
+   430→function StatusStackedBar({
+   431→  breakdown,
+   432→}: {
+   433→  breakdown: AdminStats["statusBreakdown"];
+   434→}) {
+   435→  const total =
+   436→    breakdown.PENDING +
+   437→    breakdown.SUPPLIER_CONFIRMED +
+   438→    breakdown.CUSTOMER_CONFIRMED +
+   439→    breakdown.CONFIRMED +
+   440→    breakdown.COMPLETED +
+   441→    breakdown.CANCELLED +
+   442→    breakdown.REFUNDED;
+   443→  const segments = [
+   444→    { label: "Pending", value: breakdown.PENDING, color: "bg-amber-500" },
+   445→    { label: "Supplier", value: breakdown.SUPPLIER_CONFIRMED, color: "bg-sky-600" },
+   446→    { label: "Customer", value: breakdown.CUSTOMER_CONFIRMED, color: "bg-teal-600" },
+   447→    { label: "Confirmed", value: breakdown.CONFIRMED, color: "bg-emerald-600" },
+   448→    { label: "Completed", value: breakdown.COMPLETED, color: "bg-primary" },
+   449→    { label: "Cancelled", value: breakdown.CANCELLED, color: "bg-destructive" },
+   450→    { label: "Refunded", value: breakdown.REFUNDED, color: "bg-orange-500" },
+   451→  ];
+   452→  return (
+   453→    <div>
+   454→      <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
+   455→        {segments.map(
+   456→          (s) =>
+   457→            s.value > 0 && (
+   458→              <div
+   459→                key={s.label}
+   460→                className={cn("h-full transition-all", s.color)}
+   461→                style={{ width: `${(s.value / Math.max(1, total)) * 100}%` }}
+   462→                title={`${s.label}: ${s.value}`}
+   463→              />
+   464→            ),
+   465→        )}
+   466→      </div>
+   467→      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+   468→        {segments.map((s) => (
+   469→          <div key={s.label} className="flex items-center gap-2">
+   470→            <span className={cn("size-2.5 rounded-full", s.color)} />
+   471→            <div className="min-w-0">
+   472→              <div className="text-xs text-muted-foreground">{s.label}</div>
+   473→              <div className="text-sm font-semibold text-foreground">
+   474→                {s.value}
+   475→              </div>
+   476→            </div>
+   477→          </div>
+   478→        ))}
+   479→      </div>
+   480→    </div>
+   481→  );
+   482→}
+   483→
+   484→function RevenueDonut({
+   485→  experience,
+   486→  hotel,
+   487→}: {
+   488→  experience: number;
+   489→  hotel: number;
+   490→}) {
+   491→  const total = Math.max(1, experience + hotel);
+   492→  const expPct = (experience / total) * 100;
+   493→  const hotelPct = 100 - expPct;
+   494→  // conic-gradient: gold then teal
+   495→  const gradient = `conic-gradient(var(--gold) 0% ${expPct}%, var(--primary) ${expPct}% 100%)`;
+   496→  return (
+   497→    <div className="flex items-center gap-6">
+   498→      <div
+   499→        className="relative size-32 shrink-0 rounded-full"
+   500→        style={{ background: gradient }}
+   501→      >
+   502→        <div className="absolute inset-[14px] flex flex-col items-center justify-center rounded-full bg-card shadow-inner">
+   503→          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+   504→            Total
+   505→          </span>
+   506→          <span className="text-sm font-bold text-foreground">
+   507→            {compactMoney.format(total)}
+   508→          </span>
+   509→        </div>
+   510→      </div>
+   511→      <div className="flex-1 space-y-3">
+   512→        <div>
+   513→          <div className="mb-1 flex items-center justify-between text-sm">
+   514→            <span className="flex items-center gap-2 font-medium text-foreground">
+   515→              <span className="size-2.5 rounded-full bg-gold" /> Experiences
+   516→            </span>
+   517→            <span className="text-gold font-semibold">
+   518→              {expPct.toFixed(0)}%
+   519→            </span>
+   520→          </div>
+   521→          <Progress value={expPct} className="h-2 bg-muted [&>[data-slot=progress-indicator]]:bg-gold" />
+   522→          <div className="mt-1 text-xs text-muted-foreground">
+   523→            {money.format(experience)}
+   524→          </div>
+   525→        </div>
+   526→        <div>
+   527→          <div className="mb-1 flex items-center justify-between text-sm">
+   528→            <span className="flex items-center gap-2 font-medium text-foreground">
+   529→              <span className="size-2.5 rounded-full bg-primary" /> Hotels
+   530→            </span>
+   531→            <span className="text-primary font-semibold">
+   532→              {hotelPct.toFixed(0)}%
+   533→            </span>
+   534→          </div>
+   535→          <Progress value={hotelPct} className="h-2 bg-muted" />
+   536→          <div className="mt-1 text-xs text-muted-foreground">
+   537→            {money.format(hotel)}
+   538→          </div>
+   539→        </div>
+   540→      </div>
+   541→    </div>
+   542→  );
+   543→}
+   544→
+   545→/* ------------------------------------------------------------------ */
+   546→/* KPI Card                                                           */
+   547→/* ------------------------------------------------------------------ */
+   548→
+   549→function KpiCard({
+   550→  label,
+   551→  value,
+   552→  subtitle,
+   553→  icon: Icon,
+   554→  accent = "default",
+   555→}: {
+   556→  label: string;
+   557→  value: string;
+   558→  subtitle: string;
+   559→  icon: React.ComponentType<{ className?: string }>;
+   560→  accent?: "default" | "gold";
+   561→}) {
+   562→  return (
+   563→    <Card className="overflow-hidden rounded-xl border-border/70 shadow-sm transition-shadow hover:shadow-md">
+   564→      <CardHeader className="pb-2">
+   565→        <div className="flex items-center justify-between">
+   566→          <CardDescription className="text-xs font-medium uppercase tracking-wider">
+   567→            {label}
+   568→          </CardDescription>
+   569→          <div
+   570→            className={cn(
+   571→              "flex size-9 items-center justify-center rounded-lg",
+   572→              accent === "gold"
+   573→                ? "bg-gold/15 text-gold"
+   574→                : "bg-primary/10 text-primary",
+   575→            )}
+   576→          >
+   577→            <Icon className="size-4" />
+   578→          </div>
+   579→        </div>
+   580→      </CardHeader>
+   581→      <CardContent className="pt-0">
+   582→        <div
+   583→          className={cn(
+   584→            "text-2xl font-bold tracking-tight sm:text-3xl",
+   585→            accent === "gold" && "gold-text",
+   586→          )}
+   587→          style={{ fontFamily: "var(--font-display)" }}
+   588→        >
+   589→          {value}
+   590→        </div>
+   591→        <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
+   592→      </CardContent>
+   593→    </Card>
+   594→  );
+   595→}
+   596→
+   597→function KpiSkeleton() {
+   598→  return (
+   599→    <Card className="rounded-xl">
+   600→      <CardHeader className="pb-2">
+   601→        <div className="flex items-center justify-between">
+   602→          <Skeleton className="h-3 w-20" />
+   603→          <Skeleton className="size-9 rounded-lg" />
+   604→        </div>
+   605→      </CardHeader>
+   606→      <CardContent className="pt-0">
+   607→        <Skeleton className="h-8 w-28" />
+   608→        <Skeleton className="mt-2 h-3 w-24" />
+   609→      </CardContent>
+   610→    </Card>
+   611→  );
+   612→}
+   613→
+   614→/* ------------------------------------------------------------------ */
+   615→/* Main component                                                     */
+   616→/* ------------------------------------------------------------------ */
+   617→
+   618→export function AdminDashboard({
+   619→  onExit,
+   620→  onLogout,
+   621→}: {
+   622→  onExit?: () => void;
+   623→  onLogout?: () => void;
+   624→}) {
+   625→  const [section, setSection] = useState<SectionId>("overview");
+   626→
+   627→  return (
+   628→    <div className="flex min-h-screen flex-col bg-background">
+   629→      <Header onExit={onExit} onLogout={onLogout} />
+   630→      <div className="flex flex-1">
+   631→        {/* Desktop sidebar */}
+   632→        <aside className="hidden w-64 shrink-0 md:block">
+   633→          <Sidebar section={section} setSection={setSection} onLogout={onLogout} />
+   634→        </aside>
+   635→
+   636→        <main className="flex min-w-0 flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8">
+   637→          {/* Mobile tab bar */}
+   638→          <MobileTabBar section={section} setSection={setSection} />
+   639→
+   640→          {section === "overview" && <OverviewSection />}
+   641→          {section === "bookings" && <BookingsSection />}
+   642→          {section === "catalog" && <CatalogSection />}
+   643→          {section === "analytics" && <AnalyticsSection />}
+   644→          {section === "agency" && <AgencyDashboard onExit={onExit} />}
+   645→          {section === "ai" && <AIInsightsSection />}
+   646→          {section === "notifications" && <NotificationsSection />}
+   647→          {section === "chats" && <ChatLogsSection />}
+   648→        </main>
+   649→      </div>
+   650→    </div>
+   651→  );
+   652→}
+   653→
+   654→/* ------------------------------------------------------------------ */
+   655→/* Header                                                             */
+   656→/* ------------------------------------------------------------------ */
+   657→
+   658→function Header({
+   659→  onExit,
+   660→  onLogout,
+   661→}: {
+   662→  onExit?: () => void;
+   663→  onLogout?: () => void;
+   664→}) {
+   665→  return (
+   666→    <header className="sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur-md">
+   667→      <div className="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
+   668→        <div className="flex items-center gap-3">
+   669→          <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+   670→            <Plane className="size-5" />
+   671→          </div>
+   672→          <div className="flex items-baseline gap-2">
+   673→            <span
+   674→              className="text-xl font-bold tracking-tight text-foreground"
+   675→              style={{ fontFamily: "var(--font-display)" }}
+   676→            >
+   677→              Wanderlust
+   678→            </span>
+   679→            <Badge className="border-gold/30 bg-gold/15 text-gold-foreground">
+   680→              <Crown className="size-3" />
+   681→              Admin Console
+   682→            </Badge>
+   683→          </div>
+   684→        </div>
+   685→
+   686→        <div className="flex items-center gap-2">
+   687→          <div className="hidden items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 sm:flex">
+   688→            <span className="size-2 animate-pulse rounded-full bg-emerald-500" />
+   689→            <span className="text-xs font-medium text-muted-foreground">
+   690→              Live data
+   691→            </span>
+   692→          </div>
+   693→          <Avatar className="size-9 border border-border">
+   694→            <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
+   695→              AD
+   696→            </AvatarFallback>
+   697→          </Avatar>
+   698→          {onLogout && (
+   699→            <Button variant="ghost" size="sm" onClick={onLogout} title="Sign out">
+   700→              <LogOut className="size-4" />
+   701→              <span className="hidden sm:inline">Sign out</span>
+   702→            </Button>
+   703→          )}
+   704→          {onExit && (
+   705→            <Button variant="outline" size="sm" onClick={onExit}>
+   706→              <ArrowLeft className="size-4" />
+   707→              <span className="hidden sm:inline">Back to Site</span>
+   708→            </Button>
+   709→          )}
+   710→        </div>
+   711→      </div>
+   712→    </header>
+   713→  );
+   714→}
+   715→
+   716→/* ------------------------------------------------------------------ */
+   717→/* Sidebar (desktop)                                                  */
+   718→/* ------------------------------------------------------------------ */
+   719→
+   720→function Sidebar({
+   721→  section,
+   722→  setSection,
+   723→  onLogout,
+   724→}: {
+   725→  section: SectionId;
+   726→  setSection: (s: SectionId) => void;
+   727→  onLogout?: () => void;
+   728→}) {
+   729→  return (
+   730→    <nav className="sticky top-16 flex h-[calc(100vh-4rem)] flex-col gap-2 border-r border-border/70 bg-card/40 p-4">
+   731→      <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+   732→        Workspace
+   733→      </p>
+   734→      {SECTIONS.map((s) => {
+   735→        const active = s.id === section;
+   736→        return (
+   737→          <button
+   738→            key={s.id}
+   739→            onClick={() => setSection(s.id)}
+   740→            className={cn(
+   741→              "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
+   742→              active
+   743→                ? "bg-primary text-primary-foreground shadow-sm"
+   744→                : "text-foreground/80 hover:bg-accent hover:text-foreground",
+   745→            )}
+   746→          >
+   747→            <s.icon
+   748→              className={cn(
+   749→                "size-4 shrink-0 transition-colors",
+   750→                active ? "text-gold" : "text-muted-foreground group-hover:text-foreground",
+   751→              )}
+   752→            />
+   753→            {s.label}
+   754→            {active && <span className="ml-auto size-1.5 rounded-full bg-gold" />}
+   755→          </button>
+   756→        );
+   757→      })}
+   758→
+   759→      <Separator className="my-2" />
+   760→
+   761→      <div className="rounded-xl border border-gold/20 bg-gold/5 p-4">
+   762→        <div className="flex items-center gap-2">
+   763→          <Sparkles className="size-4 text-gold" />
+   764→          <p className="text-sm font-semibold text-foreground">AI Concierge</p>
+   765→        </div>
+   766→        <p className="mt-1 text-xs text-muted-foreground">
+   767→          Generate insights and price predictions from your live booking data.
+   768→        </p>
+   769→        <Button
+   770→          size="sm"
+   771→          className="mt-3 w-full bg-primary text-primary-foreground hover:bg-primary/90"
+   772→          onClick={() => setSection("ai")}
+   773→        >
+   774→          Open AI Insights
+   775→        </Button>
+   776→      </div>
+   777→
+   778→      {onLogout && (
+   779→        <Button
+   780→          variant="ghost"
+   781→          size="sm"
+   782→          className="mt-2 justify-start gap-2 text-muted-foreground hover:text-foreground"
+   783→          onClick={onLogout}
+   784→        >
+   785→          <LogOut className="size-4" />
+   786→          Sign out
+   787→        </Button>
+   788→      )}
+   789→    </nav>
+   790→  );
+   791→}
+   792→
+   793→/* ------------------------------------------------------------------ */
+   794→/* Mobile tab bar                                                     */
+   795→/* ------------------------------------------------------------------ */
+   796→
+   797→function MobileTabBar({
+   798→  section,
+   799→  setSection,
+   800→}: {
+   801→  section: SectionId;
+   802→  setSection: (s: SectionId) => void;
+   803→}) {
+   804→  return (
+   805→    <div className="md:hidden -mx-4 px-4 sm:-mx-6 sm:px-6">
+   806→      <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+   807→        {SECTIONS.map((s) => {
+   808→          const active = s.id === section;
+   809→          return (
+   810→            <button
+   811→              key={s.id}
+   812→              onClick={() => setSection(s.id)}
+   813→              className={cn(
+   814→                "flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-medium transition-all",
+   815→                active
+   816→                  ? "border-transparent bg-primary text-primary-foreground"
+   817→                  : "border-border bg-card text-muted-foreground",
+   818→              )}
+   819→            >
+   820→              <s.icon className={cn("size-3.5", active && "text-gold")} />
+   821→              {s.label}
+   822→            </button>
+   823→          );
+   824→        })}
+   825→      </div>
+   826→    </div>
+   827→  );
+   828→}
+   829→
+   830→/* ------------------------------------------------------------------ */
+   831→/* Overview Section                                                   */
+   832→/* ------------------------------------------------------------------ */
+   833→
+   834→function OverviewSection() {
+   835→  const [stats, setStats] = useState<AdminStats | null>(null);
+   836→  const [loading, setLoading] = useState(true);
+   837→  const [error, setError] = useState<string | null>(null);
+   838→
+   839→  const load = useCallback(async () => {
+   840→    setLoading(true);
+   841→    setError(null);
+   842→    try {
+   843→      const res = await fetch("/api/admin/stats", { cache: "no-store" });
+   844→      if (!res.ok) throw new Error("Failed to load stats");
+   845→      const data = (await res.json()) as AdminStats;
+   846→      setStats(data);
+   847→    } catch (e) {
+   848→      const msg = e instanceof Error ? e.message : "Unknown error";
+   849→      setError(msg);
+   850→      toast.error("Could not load dashboard stats", { description: msg });
+   851→    } finally {
+   852→      setLoading(false);
+   853→    }
+   854→  }, []);
+   855→
+   856→  useEffect(() => {
+   857→    void load();
+   858→  }, [load]);
+   859→
+   860→  if (loading) {
+   861→    return (
+   862→      <div className="space-y-6">
+   863→        <SectionTitle
+   864→          title="Overview"
+   865→          subtitle="Performance snapshot across the Wanderlust platform."
+   866→          icon={LayoutDashboard}
+   867→        />
+   868→        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+   869→          {Array.from({ length: 4 }).map((_, i) => (
+   870→            <KpiSkeleton key={i} />
+   871→          ))}
+   872→        </div>
+   873→        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+   874→          <Skeleton className="h-80 rounded-xl lg:col-span-2" />
+   875→          <Skeleton className="h-80 rounded-xl" />
+   876→        </div>
+   877→      </div>
+   878→    );
+   879→  }
+   880→
+   881→  if (error || !stats) {
+   882→    return (
+   883→      <div className="space-y-6">
+   884→        <SectionTitle
+   885→          title="Overview"
+   886→          subtitle="Performance snapshot across the Wanderlust platform."
+   887→          icon={LayoutDashboard}
+   888→        />
+   889→        <ErrorState
+   890→          message={error ?? "No data available"}
+   891→          onRetry={load}
+   892→        />
+   893→      </div>
+   894→    );
+   895→  }
+   896→
+   897→  const { kpis, revenueByType, statusBreakdown, revenueTrend, recentBookings } =
+   898→    stats;
+   899→  const totalRev =
+   900→    revenueByType.EXPERIENCE + revenueByType.HOTEL || kpis.revenue;
+   901→
+   902→  return (
+   903→    <div className="space-y-6">
+   904→      <SectionTitle
+   905→        title="Overview"
+   906→        subtitle="Performance snapshot across the Wanderlust platform."
+   907→        icon={LayoutDashboard}
+   908→        action={
+   909→          <Button variant="outline" size="sm" onClick={load}>
+   910→            <RefreshCw className="size-4" /> Refresh
+   911→          </Button>
+   912→        }
+   913→      />
+   914→
+   915→      {/* KPI Row */}
+   916→      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+   917→        <KpiCard
+   918→          label="Total Revenue"
+   919→          value={money.format(kpis.revenue)}
+   920→          subtitle={`${money.format(kpis.refunded)} refunded`}
+   921→          icon={DollarSign}
+   922→          accent="gold"
+   923→        />
+   924→        <KpiCard
+   925→          label="Total Bookings"
+   926→          value={compactNumber.format(kpis.totalBookings)}
+   927→          subtitle={`${kpis.totalExperiences} experiences · ${kpis.totalHotels} hotels`}
+   928→          icon={CalendarCheck}
+   929→        />
+   930→        <KpiCard
+   931→          label="Avg Order Value"
+   932→          value={money.format(kpis.avgOrderValue)}
+   933→          subtitle={`${kpis.totalDestinations} destinations live`}
+   934→          icon={Wallet}
+   935→        />
+   936→        <KpiCard
+   937→          label="Active Users"
+   938→          value={compactNumber.format(kpis.totalUsers)}
+   939→          subtitle={`${kpis.totalReviews} reviews collected`}
+   940→          icon={Users}
+   941→        />
+   942→      </div>
+   943→
+   944→      {/* Revenue Trend + Revenue by type */}
+   945→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+   946→        <Card className="rounded-xl lg:col-span-2">
+   947→          <CardHeader>
+   948→            <div className="flex items-center justify-between">
+   949→              <div>
+   950→                <CardTitle className="text-base">Revenue Trend</CardTitle>
+   951→                <CardDescription>Last 7 days</CardDescription>
+   952→              </div>
+   953→              <Badge
+   954→                variant="outline"
+   955→                className="border-gold/30 text-gold-foreground"
+   956→              >
+   957→                <TrendingUp className="size-3" />
+   958→                Live
+   959→              </Badge>
+   960→            </div>
+   961→          </CardHeader>
+   962→          <CardContent>
+   963→            <RevenueBarChart data={revenueTrend} />
+   964→          </CardContent>
+   965→        </Card>
+   966→
+   967→        <Card className="rounded-xl">
+   968→          <CardHeader>
+   969→            <CardTitle className="text-base">Revenue by Type</CardTitle>
+   970→            <CardDescription>Experiences vs Hotels</CardDescription>
+   971→          </CardHeader>
+   972→          <CardContent>
+   973→            <RevenueDonut
+   974→              experience={revenueByType.EXPERIENCE}
+   975→              hotel={revenueByType.HOTEL}
+   976→            />
+   977→            <Separator className="my-4" />
+   978→            <div className="flex items-center justify-between text-sm">
+   979→              <span className="text-muted-foreground">Total net revenue</span>
+   980→              <span
+   981→                className="font-bold text-gold"
+   982→                style={{ fontFamily: "var(--font-display)" }}
+   983→              >
+   984→                {money.format(totalRev)}
+   985→              </span>
+   986→            </div>
+   987→          </CardContent>
+   988→        </Card>
+   989→      </div>
+   990→
+   991→      {/* Status breakdown + Recent bookings */}
+   992→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+   993→        <Card className="rounded-xl">
+   994→          <CardHeader>
+   995→            <CardTitle className="text-base">Booking Status</CardTitle>
+   996→            <CardDescription>Breakdown of all bookings</CardDescription>
+   997→          </CardHeader>
+   998→          <CardContent>
+   999→            <StatusStackedBar breakdown={statusBreakdown} />
+  1000→          </CardContent>
+  1001→        </Card>
+  1002→
+  1003→        <Card className="rounded-xl lg:col-span-2">
+  1004→          <CardHeader>
+  1005→            <div className="flex items-center justify-between">
+  1006→              <div>
+  1007→                <CardTitle className="text-base">Recent Bookings</CardTitle>
+  1008→                <CardDescription>Latest guest reservations</CardDescription>
+  1009→              </div>
+  1010→              <Badge variant="secondary">
+  1011→                {recentBookings.length} recent
+  1012→              </Badge>
+  1013→            </div>
+  1014→          </CardHeader>
+  1015→          <CardContent className="px-0 sm:px-6">
+  1016→            <div className="max-h-80 overflow-y-auto">
+  1017→              <Table>
+  1018→                <TableHeader>
+  1019→                  <TableRow>
+  1020→                    <TableHead className="pl-4 sm:pl-0">Reference</TableHead>
+  1021→                    <TableHead>Guest</TableHead>
+  1022→                    <TableHead className="hidden md:table-cell">
+  1023→                      Item
+  1024→                    </TableHead>
+  1025→                    <TableHead className="text-right">Amount</TableHead>
+  1026→                    <TableHead>Status</TableHead>
+  1027→                    <TableHead className="hidden lg:table-cell text-right pr-4 sm:pr-0">
+  1028→                      Date
+  1029→                    </TableHead>
+  1030→                  </TableRow>
+  1031→                </TableHeader>
+  1032→                <TableBody>
+  1033→                  {recentBookings.map((b) => (
+  1034→                    <TableRow key={b.id}>
+  1035→                      <TableCell className="pl-4 sm:pl-0 font-mono text-xs font-medium text-primary">
+  1036→                        {b.reference}
+  1037→                      </TableCell>
+  1038→                      <TableCell className="font-medium">
+  1039→                        {b.customerName}
+  1040→                      </TableCell>
+  1041→                      <TableCell className="hidden md:table-cell max-w-[200px] truncate text-muted-foreground">
+  1042→                        {b.title}
+  1043→                      </TableCell>
+  1044→                      <TableCell className="text-right font-semibold">
+  1045→                        {money.format(b.totalAmount)}
+  1046→                      </TableCell>
+  1047→                      <TableCell>
+  1048→                        <StatusBadge status={b.status} />
+  1049→                      </TableCell>
+  1050→                      <TableCell className="hidden lg:table-cell text-right pr-4 sm:pr-0 text-xs text-muted-foreground">
+  1051→                        {fmtDate(b.createdAt)}
+  1052→                      </TableCell>
+  1053→                    </TableRow>
+  1054→                  ))}
+  1055→                </TableBody>
+  1056→              </Table>
+  1057→            </div>
+  1058→          </CardContent>
+  1059→        </Card>
+  1060→      </div>
+  1061→    </div>
+  1062→  );
+  1063→}
+  1064→
+  1065→/* ------------------------------------------------------------------ */
+  1066→/* Bookings Section                                                   */
+  1067→/* ------------------------------------------------------------------ */
+  1068→
+  1069→const STATUSES = [
+  1070→  "ALL",
+  1071→  "PENDING",
+  1072→  "SUPPLIER_CONFIRMED",
+  1073→  "CUSTOMER_CONFIRMED",
+  1074→  "CONFIRMED",
+  1075→  "COMPLETED",
+  1076→  "CANCELLED",
+  1077→  "REFUNDED",
+  1078→] as const;
+  1079→const TYPES = ["ALL", "EXPERIENCE", "HOTEL"] as const;
+  1080→
+  1081→/* ------------------------------------------------------------------ */
+  1082→/* Fraud detail dialog                                                */
+  1083→/* ------------------------------------------------------------------ */
+  1084→
+  1085→function fraudScoreColor(score: number): string {
+  1086→  if (score >= 50) return "bg-red-500 text-white";
+  1087→  if (score >= 25) return "bg-amber-500 text-white";
+  1088→  return "bg-emerald-500 text-white";
+  1089→}
+  1090→
+  1091→function fraudRiskLabel(score: number): { label: string; tone: string } {
+  1092→  if (score >= 50) return { label: "High risk", tone: "text-red-600 dark:text-red-400" };
+  1093→  if (score >= 25) return { label: "Medium risk", tone: "text-amber-600 dark:text-amber-400" };
+  1094→  return { label: "Low risk", tone: "text-emerald-600 dark:text-emerald-400" };
+  1095→}
+  1096→
+  1097→function reviewBadgeClass(review: string): string {
+  1098→  switch (review) {
+  1099→    case "REAL":
+  1100→      return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30";
+  1101→    case "SPAM":
+  1102→      return "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30";
+  1103→    default:
+  1104→      return "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30";
+  1105→  }
+  1106→}
+  1107→
+  1108→function FraudDetailDialog({
+  1109→  booking,
+  1110→  open,
+  1111→  onOpenChange,
+  1112→  onReview,
+  1113→  loading,
+  1114→}: {
+  1115→  booking: BookingT | null;
+  1116→  open: boolean;
+  1117→  onOpenChange: (o: boolean) => void;
+  1118→  onReview: (manualReview: "REAL" | "SPAM" | "PENDING") => void;
+  1119→  loading: boolean;
+  1120→}) {
+  1121→  if (!booking) return null;
+  1122→  const risk = fraudRiskLabel(booking.fraudScore);
+  1123→  return (
+  1124→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1125→      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+  1126→        <DialogHeader>
+  1127→          <div className="flex items-center gap-3">
+  1128→            <div
+  1129→              className={cn(
+  1130→                "flex size-10 items-center justify-center rounded-xl",
+  1131→                booking.isFlagged
+  1132→                  ? "bg-destructive/10 text-destructive"
+  1133→                  : "bg-primary/10 text-primary",
+  1134→              )}
+  1135→            >
+  1136→              <ShieldAlert className="size-5" />
+  1137→            </div>
+  1138→            <div>
+  1139→              <DialogTitle style={{ fontFamily: "var(--font-display)" }}>
+  1140→                Booking verification
+  1141→              </DialogTitle>
+  1142→              <DialogDescription className="font-mono text-xs">
+  1143→                {booking.reference}
+  1144→              </DialogDescription>
+  1145→            </div>
+  1146→          </div>
+  1147→        </DialogHeader>
+  1148→
+  1149→        <div className="space-y-4">
+  1150→          {/* Title */}
+  1151→          <div>
+  1152→            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+  1153→              Item
+  1154→            </p>
+  1155→            <p className="text-sm font-semibold text-foreground">
+  1156→              {bookingItemTitle(booking)}
+  1157→            </p>
+  1158→          </div>
+  1159→
+  1160→          {/* Score badge */}
+  1161→          <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-muted/30 p-4">
+  1162→            <div
+  1163→              className={cn(
+  1164→                "flex size-14 shrink-0 items-center justify-center rounded-full text-lg font-bold",
+  1165→                fraudScoreColor(booking.fraudScore),
+  1166→              )}
+  1167→            >
+  1168→              {booking.fraudScore}
+  1169→            </div>
+  1170→            <div className="min-w-0">
+  1171→              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+  1172→                Fraud score · 0-100
+  1173→              </p>
+  1174→              <p className={cn("text-sm font-bold", risk.tone)}>{risk.label}</p>
+  1175→              <p className="mt-0.5 text-xs text-muted-foreground">
+  1176→                {booking.isFlagged
+  1177→                  ? "Flagged for manual review based on automated signals."
+  1178→                  : "No critical fraud signals detected."}
+  1179→              </p>
+  1180→            </div>
+  1181→          </div>
+  1182→
+  1183→          {/* Customer info */}
+  1184→          <div className="rounded-xl border border-border/60 p-4">
+  1185→            <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+  1186→              Customer
+  1187→            </p>
+  1188→            <div className="grid grid-cols-1 gap-1.5 text-sm">
+  1189→              <div className="flex items-center gap-2">
+  1190→                <span className="text-muted-foreground">Name:</span>
+  1191→                <span className="font-medium text-foreground">{booking.customerName}</span>
+  1192→              </div>
+  1193→              <div className="flex items-center gap-2">
+  1194→                <span className="text-muted-foreground">Email:</span>
+  1195→                <span className="font-medium text-foreground">{booking.customerEmail}</span>
+  1196→              </div>
+  1197→              <div className="flex items-center gap-2">
+  1198→                <span className="text-muted-foreground">Phone:</span>
+  1199→                <span className="font-medium text-foreground">
+  1200→                  {booking.customerPhone || "—"}
+  1201→                </span>
+  1202→              </div>
+  1203→            </div>
+  1204→          </div>
+  1205→
+  1206→          {/* IP + UA */}
+  1207→          <div className="space-y-2 rounded-xl border border-border/60 p-4">
+  1208→            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+  1209→              Request metadata
+  1210→            </p>
+  1211→            <div>
+  1212→              <p className="text-xs text-muted-foreground">IP address</p>
+  1213→              <p className="font-mono text-xs text-foreground">
+  1214→                {booking.ipAddress || "—"}
+  1215→              </p>
+  1216→            </div>
+  1217→            <div>
+  1218→              <p className="text-xs text-muted-foreground">User-agent</p>
+  1219→              <p className="break-all font-mono text-[11px] leading-snug text-foreground">
+  1220→                {booking.userAgent || "—"}
+  1221→              </p>
+  1222→            </div>
+  1223→          </div>
+  1224→
+  1225→          {/* Risk signals */}
+  1226→          <div className="rounded-xl border border-border/60 p-4">
+  1227→            <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+  1228→              Risk signals ({booking.fraudSignals.length})
+  1229→            </p>
+  1230→            {booking.fraudSignals.length === 0 ? (
+  1231→              <p className="text-sm text-muted-foreground">
+  1232→                No fraud signals detected — looks clean.
+  1233→              </p>
+  1234→            ) : (
+  1235→              <ul className="space-y-1.5">
+  1236→                {booking.fraudSignals.map((sig, i) => (
+  1237→                  <li
+  1238→                    key={`${sig}-${i}`}
+  1239→                    className="flex items-start gap-2 text-sm text-foreground"
+  1240→                  >
+  1241→                    <AlertCircle className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
+  1242→                    <span>{sig}</span>
+  1243→                  </li>
+  1244→                ))}
+  1245→              </ul>
+  1246→            )}
+  1247→          </div>
+  1248→
+  1249→          {/* Manual review */}
+  1250→          <div className="rounded-xl border border-gold/20 bg-gold/5 p-4">
+  1251→            <div className="mb-3 flex items-center justify-between gap-2">
+  1252→              <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+  1253→                Manual review
+  1254→              </p>
+  1255→              <span
+  1256→                className={cn(
+  1257→                  "rounded-md border px-2 py-0.5 text-[11px] font-semibold",
+  1258→                  reviewBadgeClass(booking.manualReview),
+  1259→                )}
+  1260→              >
+  1261→                {booking.manualReview}
+  1262→              </span>
+  1263→            </div>
+  1264→            <div className="grid grid-cols-3 gap-2">
+  1265→              <Button
+  1266→                size="sm"
+  1267→                variant="outline"
+  1268→                disabled={loading || booking.manualReview === "REAL"}
+  1269→                className="border-emerald-500/30 text-emerald-600 hover:bg-emerald-500/10 dark:text-emerald-400"
+  1270→                onClick={() => onReview("REAL")}
+  1271→              >
+  1272→                <ShieldCheck className="size-3.5" /> Real
+  1273→              </Button>
+  1274→              <Button
+  1275→                size="sm"
+  1276→                variant="outline"
+  1277→                disabled={loading || booking.manualReview === "SPAM"}
+  1278→                className="border-red-500/30 text-red-600 hover:bg-red-500/10 dark:text-red-400"
+  1279→                onClick={() => onReview("SPAM")}
+  1280→              >
+  1281→                <ShieldAlert className="size-3.5" /> Spam
+  1282→              </Button>
+  1283→              <Button
+  1284→                size="sm"
+  1285→                variant="outline"
+  1286→                disabled={loading || booking.manualReview === "PENDING"}
+  1287→                onClick={() => onReview("PENDING")}
+  1288→              >
+  1289→                <RotateCcw className="size-3.5" /> Reset
+  1290→              </Button>
+  1291→            </div>
+  1292→            {loading && (
+  1293→              <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+  1294→                <Loader2 className="size-3 animate-spin" /> Updating…
+  1295→              </p>
+  1296→            )}
+  1297→          </div>
+  1298→        </div>
+  1299→      </DialogContent>
+  1300→    </Dialog>
+  1301→  );
+  1302→}
+  1303→
+  1304→function BookingsSection() {
+  1305→  const [bookings, setBookings] = useState<BookingT[]>([]);
+  1306→  const [loading, setLoading] = useState(true);
+  1307→  const [error, setError] = useState<string | null>(null);
+  1308→
+  1309→  const [q, setQ] = useState("");
+  1310→  const [status, setStatus] = useState<string>("ALL");
+  1311→  const [type, setType] = useState<string>("ALL");
+  1312→
+  1313→  const [fraudBooking, setFraudBooking] = useState<BookingT | null>(null);
+  1314→  const [pendingAction, setPendingAction] = useState<{
+  1315→    booking: BookingT;
+  1316→    action: "cancel" | "refund";
+  1317→  } | null>(null);
+  1318→  const [actionLoading, setActionLoading] = useState(false);
+  1319→
+  1320→  const load = useCallback(async () => {
+  1321→    setLoading(true);
+  1322→    setError(null);
+  1323→    try {
+  1324→      const params = new URLSearchParams();
+  1325→      if (status !== "ALL") params.set("status", status);
+  1326→      if (type !== "ALL") params.set("type", type);
+  1327→      if (q.trim()) params.set("q", q.trim());
+  1328→      params.set("limit", "100");
+  1329→      const res = await fetch(`/api/admin/bookings?${params.toString()}`, {
+  1330→        cache: "no-store",
+  1331→      });
+  1332→      if (!res.ok) throw new Error("Failed to load bookings");
+  1333→      const data = (await res.json()) as { bookings: BookingT[] };
+  1334→      setBookings(data.bookings);
+  1335→    } catch (e) {
+  1336→      const msg = e instanceof Error ? e.message : "Unknown error";
+  1337→      setError(msg);
+  1338→      toast.error("Could not load bookings", { description: msg });
+  1339→    } finally {
+  1340→      setLoading(false);
+  1341→    }
+  1342→  }, [q, status, type]);
+  1343→
+  1344→  // Filter changes trigger an immediate fetch (search uses a separate
+  1345→  // debounced effect below). `load` is referenced intentionally without
+  1346→  // being listed in deps to avoid double-fetching on every keystroke.
+  1347→  useEffect(() => {
+  1348→    void load();
+  1349→  }, [status, type]);
+  1350→
+  1351→  // Debounced search
+  1352→  useEffect(() => {
+  1353→    const t = setTimeout(() => {
+  1354→      void load();
+  1355→    }, 350);
+  1356→    return () => clearTimeout(t);
+  1357→  }, [q]);
+  1358→
+  1359→  const patchBooking = useCallback(
+  1360→    async (id: string, body: Record<string, unknown>) => {
+  1361→      const res = await fetch(`/api/admin/bookings/${id}`, {
+  1362→        method: "PATCH",
+  1363→        headers: { "Content-Type": "application/json" },
+  1364→        body: JSON.stringify(body),
+  1365→        cache: "no-store",
+  1366→      });
+  1367→      if (!res.ok) {
+  1368→        const data = await res.json().catch(() => ({}));
+  1369→        throw new Error((data as { error?: string }).error || "Action failed");
+  1370→      }
+  1371→      const data = (await res.json()) as { booking: BookingT };
+  1372→      return data.booking;
+  1373→    },
+  1374→    [],
+  1375→  );
+  1376→
+  1377→  const handleProgress = useCallback(
+  1378→    async (b: BookingT, action: string, label: string) => {
+  1379→      try {
+  1380→        setActionLoading(true);
+  1381→        await patchBooking(b.id, { action });
+  1382→        toast.success(`${label} — booking updated.`);
+  1383→        await load();
+  1384→      } catch (e) {
+  1385→        toast.error(`Failed to update booking`, {
+  1386→          description: e instanceof Error ? e.message : "",
+  1387→        });
+  1388→      } finally {
+  1389→        setActionLoading(false);
+  1390→      }
+  1391→    },
+  1392→    [patchBooking, load],
+  1393→  );
+  1394→
+  1395→  const handleReview = useCallback(
+  1396→    async (manualReview: "REAL" | "SPAM" | "PENDING") => {
+  1397→      if (!fraudBooking) return;
+  1398→      try {
+  1399→        setActionLoading(true);
+  1400→        const updated = await patchBooking(fraudBooking.id, {
+  1401→          action: "review",
+  1402→          manualReview,
+  1403→        });
+  1404→        setFraudBooking(updated);
+  1405→        toast.success(`Marked as ${manualReview}.`);
+  1406→        await load();
+  1407→      } catch (e) {
+  1408→        toast.error("Failed to update review", {
+  1409→          description: e instanceof Error ? e.message : "",
+  1410→        });
+  1411→      } finally {
+  1412→        setActionLoading(false);
+  1413→      }
+  1414→    },
+  1415→    [fraudBooking, patchBooking, load],
+  1416→  );
+  1417→
+  1418→  const handleConfirmAction = useCallback(async () => {
+  1419→    if (!pendingAction) return;
+  1420→    const { booking, action } = pendingAction;
+  1421→    try {
+  1422→      setActionLoading(true);
+  1423→      await patchBooking(booking.id, { action });
+  1424→      toast.success(
+  1425→        `${action === "cancel" ? "Cancelled" : "Refunded"} — booking updated.`,
+  1426→      );
+  1427→      await load();
+  1428→    } catch (e) {
+  1429→      toast.error(`Failed to ${action} booking`, {
+  1430→        description: e instanceof Error ? e.message : "",
+  1431→      });
+  1432→    } finally {
+  1433→      setActionLoading(false);
+  1434→      setPendingAction(null);
+  1435→    }
+  1436→  }, [pendingAction, patchBooking, load]);
+  1437→
+  1438→  return (
+  1439→    <div className="space-y-6">
+  1440→      <SectionTitle
+  1441→        title="Bookings"
+  1442→        subtitle="Search, filter and review every reservation on the platform."
+  1443→        icon={CalendarCheck}
+  1444→        action={
+  1445→          <Button variant="outline" size="sm" onClick={load}>
+  1446→            <RefreshCw className="size-4" /> Refresh
+  1447→          </Button>
+  1448→        }
+  1449→      />
+  1450→
+  1451→      <Card className="rounded-xl">
+  1452→        <CardHeader>
+  1453→          <CardTitle className="text-base">Filters</CardTitle>
+  1454→          <CardDescription>
+  1455→            Refine by status, type or search by reference, name or email.
+  1456→          </CardDescription>
+  1457→        </CardHeader>
+  1458→        <CardContent>
+  1459→          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+  1460→            <div className="relative flex-1">
+  1461→              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+  1462→              <Input
+  1463→                placeholder="Search reference, name, email…"
+  1464→                value={q}
+  1465→                onChange={(e) => setQ(e.target.value)}
+  1466→                className="pl-9"
+  1467→              />
+  1468→            </div>
+  1469→            <Select value={status} onValueChange={setStatus}>
+  1470→              <SelectTrigger className="w-full sm:w-44">
+  1471→                <SelectValue placeholder="Status" />
+  1472→              </SelectTrigger>
+  1473→              <SelectContent>
+  1474→                {STATUSES.map((s) => (
+  1475→                  <SelectItem key={s} value={s}>
+  1476→                    {s === "ALL" ? "All statuses" : s}
+  1477→                  </SelectItem>
+  1478→                ))}
+  1479→              </SelectContent>
+  1480→            </Select>
+  1481→            <Select value={type} onValueChange={setType}>
+  1482→              <SelectTrigger className="w-full sm:w-44">
+  1483→                <SelectValue placeholder="Type" />
+  1484→              </SelectTrigger>
+  1485→              <SelectContent>
+  1486→                {TYPES.map((t) => (
+  1487→                  <SelectItem key={t} value={t}>
+  1488→                    {t === "ALL" ? "All types" : t}
+  1489→                  </SelectItem>
+  1490→                ))}
+  1491→              </SelectContent>
+  1492→            </Select>
+  1493→          </div>
+  1494→        </CardContent>
+  1495→      </Card>
+  1496→
+  1497→      <Card className="rounded-xl">
+  1498→        <CardHeader>
+  1499→          <div className="flex items-center justify-between">
+  1500→            <div>
+  1501→              <CardTitle className="text-base">All Bookings</CardTitle>
+  1502→              <CardDescription>
+  1503→                {loading
+  1504→                  ? "Loading…"
+  1505→                  : `${bookings.length} booking${bookings.length === 1 ? "" : "s"} found`}
+  1506→              </CardDescription>
+  1507→            </div>
+  1508→            <Badge variant="secondary">
+  1509→              {bookings.length} results
+  1510→            </Badge>
+  1511→          </div>
+  1512→        </CardHeader>
+  1513→        <CardContent className="px-0 sm:px-6">
+  1514→          {loading ? (
+  1515→            <div className="space-y-2 px-4 sm:px-0">
+  1516→              {Array.from({ length: 6 }).map((_, i) => (
+  1517→                <Skeleton key={i} className="h-12 w-full rounded-md" />
+  1518→              ))}
+  1519→            </div>
+  1520→          ) : error ? (
+  1521→            <ErrorState message={error} onRetry={load} />
+  1522→          ) : bookings.length === 0 ? (
+  1523→            <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+  1524→              <CalendarCheck className="size-8 text-muted-foreground" />
+  1525→              <p className="font-medium text-foreground">No bookings found</p>
+  1526→              <p className="text-sm text-muted-foreground">
+  1527→                Try adjusting your filters or search query.
+  1528→              </p>
+  1529→            </div>
+  1530→          ) : (
+  1531→            <div className="max-h-[600px] overflow-auto">
+  1532→              <Table>
+  1533→                <TableHeader className="sticky top-0 z-10 bg-card">
+  1534→                  <TableRow>
+  1535→                    <TableHead className="pl-4 sm:pl-6">Reference</TableHead>
+  1536→                    <TableHead>Customer</TableHead>
+  1537→                    <TableHead>Type</TableHead>
+  1538→                    <TableHead className="min-w-[180px]">Item</TableHead>
+  1539→                    <TableHead>Check-in</TableHead>
+  1540→                    <TableHead>Guests / Nights</TableHead>
+  1541→                    <TableHead className="text-right">Total</TableHead>
+  1542→                    <TableHead>Status</TableHead>
+  1543→                    <TableHead>Payment</TableHead>
+  1544→                    <TableHead className="text-right pr-4 sm:pr-6">Actions</TableHead>
+  1545→                  </TableRow>
+  1546→                </TableHeader>
+  1547→                <TableBody>
+  1548→                  {bookings.map((b) => {
+  1549→                    const cancellable =
+  1550→                      b.status === "PENDING" ||
+  1551→                      b.status === "SUPPLIER_CONFIRMED" ||
+  1552→                      b.status === "CUSTOMER_CONFIRMED" ||
+  1553→                      b.status === "CONFIRMED" ||
+  1554→                      b.status === "COMPLETED";
+  1555→                    const refundable =
+  1556→                      b.status === "CONFIRMED" || b.status === "COMPLETED";
+  1557→                    const isTerminal =
+  1558→                      b.status === "CANCELLED" || b.status === "REFUNDED";
+  1559→                    return (
+  1560→                      <TableRow key={b.id}>
+  1561→                        <TableCell className="pl-4 sm:pl-6 font-mono text-xs font-semibold text-primary">
+  1562→                          {b.reference}
+  1563→                        </TableCell>
+  1564→                        <TableCell>
+  1565→                          <div className="flex flex-col">
+  1566→                            <span className="font-medium text-foreground">
+  1567→                              {b.customerName}
+  1568→                            </span>
+  1569→                            <span className="text-xs text-muted-foreground">
+  1570→                              {b.customerEmail}
+  1571→                            </span>
+  1572→                          </div>
+  1573→                        </TableCell>
+  1574→                        <TableCell>
+  1575→                          <Badge
+  1576→                            variant="outline"
+  1577→                            className={
+  1578→                              b.type === "EXPERIENCE"
+  1579→                                ? "border-gold/30 text-gold-foreground"
+  1580→                                : "border-primary/30 text-primary"
+  1581→                            }
+  1582→                          >
+  1583→                            {b.type === "EXPERIENCE" ? (
+  1584→                              <Plane className="size-3" />
+  1585→                            ) : (
+  1586→                              <HotelIcon className="size-3" />
+  1587→                            )}
+  1588→                            {b.type}
+  1589→                          </Badge>
+  1590→                        </TableCell>
+  1591→                        <TableCell className="min-w-[180px]">
+  1592→                          <div className="flex flex-col">
+  1593→                            <span className="max-w-[200px] truncate font-medium text-foreground">
+  1594→                              {bookingItemTitle(b)}
+  1595→                            </span>
+  1596→                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+  1597→                              <MapPin className="size-3" />
+  1598→                              {bookingDestination(b)}
+  1599→                            </span>
+  1600→                          </div>
+  1601→                        </TableCell>
+  1602→                        <TableCell className="text-sm">
+  1603→                          {fmtDate(b.checkInDate)}
+  1604→                        </TableCell>
+  1605→                        <TableCell className="text-sm">
+  1606→                          <span className="text-foreground">{b.guests}</span>
+  1607→                          <span className="text-muted-foreground"> guests</span>
+  1608→                          {b.nights > 0 && (
+  1609→                            <>
+  1610→                              <span className="text-muted-foreground"> · </span>
+  1611→                              <span className="text-foreground">{b.nights}</span>
+  1612→                              <span className="text-muted-foreground"> nights</span>
+  1613→                            </>
+  1614→                          )}
+  1615→                        </TableCell>
+  1616→                        <TableCell className="text-right font-semibold">
+  1617→                          {moneyDetailed.format(b.totalAmount)}
+  1618→                        </TableCell>
+  1619→                        <TableCell>
+  1620→                          <StatusBadge status={b.status} />
+  1621→                        </TableCell>
+  1622→                        <TableCell>
+  1623→                          <PaymentBadge status={b.paymentStatus} />
+  1624→                        </TableCell>
+  1625→                        <TableCell className="pr-4 sm:pr-6">
+  1626→                          <div className="flex items-center justify-end gap-1.5">
+  1627→                            <Button
+  1628→                              size="sm"
+  1629→                              variant="ghost"
+  1630→                              className="relative h-8 w-8 p-0"
+  1631→                              title="Inspect fraud details"
+  1632→                              onClick={() => setFraudBooking(b)}
+  1633→                            >
+  1634→                              <Eye className="size-4" />
+  1635→                              {b.isFlagged && (
+  1636→                                <span className="absolute right-1 top-1 size-1.5 rounded-full bg-destructive" />
+  1637→                              )}
+  1638→                            </Button>
+  1639→
+  1640→                            {b.status === "PENDING" && (
+  1641→                              <Button
+  1642→                                size="sm"
+  1643→                                variant="default"
+  1644→                                disabled={actionLoading}
+  1645→                                className="h-8 bg-emerald-600 text-white hover:bg-emerald-700"
+  1646→                                onClick={() =>
+  1647→                                  handleProgress(
+  1648→                                    b,
+  1649→                                    "confirm-supplier",
+  1650→                                    "Supplier confirmed",
+  1651→                                  )
+  1652→                                }
+  1653→                              >
+  1654→                                <CheckCircle2 className="size-3.5" />
+  1655→                                <span className="hidden lg:inline">Confirm Supplier</span>
+  1656→                                <span className="lg:hidden">Supplier</span>
+  1657→                              </Button>
+  1658→                            )}
+  1659→                            {b.status === "SUPPLIER_CONFIRMED" && (
+  1660→                              <Button
+  1661→                                size="sm"
+  1662→                                variant="default"
+  1663→                                disabled={actionLoading}
+  1664→                                className="h-8 bg-sky-600 text-white hover:bg-sky-700"
+  1665→                                onClick={() =>
+  1666→                                  handleProgress(
+  1667→                                    b,
+  1668→                                    "confirm-customer",
+  1669→                                    "Customer confirmed",
+  1670→                                  )
+  1671→                                }
+  1672→                              >
+  1673→                                <CheckCircle2 className="size-3.5" />
+  1674→                                <span className="hidden lg:inline">Confirm Customer</span>
+  1675→                                <span className="lg:hidden">Customer</span>
+  1676→                              </Button>
+  1677→                            )}
+  1678→                            {b.status === "CUSTOMER_CONFIRMED" && (
+  1679→                              <Button
+  1680→                                size="sm"
+  1681→                                variant="default"
+  1682→                                disabled={actionLoading}
+  1683→                                className="h-8 bg-amber-500 text-white hover:bg-amber-600"
+  1684→                                onClick={() =>
+  1685→                                  handleProgress(b, "confirm", "Booking confirmed")
+  1686→                                }
+  1687→                              >
+  1688→                                <CheckCircle2 className="size-3.5" />
+  1689→                                <span className="hidden lg:inline">Confirm Booking</span>
+  1690→                                <span className="lg:hidden">Confirm</span>
+  1691→                              </Button>
+  1692→                            )}
+  1693→
+  1694→                            {cancellable && (
+  1695→                              <Button
+  1696→                                size="sm"
+  1697→                                variant="outline"
+  1698→                                disabled={actionLoading}
+  1699→                                className="h-8 border-destructive/30 text-destructive hover:bg-destructive/10"
+  1700→                                title="Cancel booking"
+  1701→                                onClick={() =>
+  1702→                                  setPendingAction({ booking: b, action: "cancel" })
+  1703→                                }
+  1704→                              >
+  1705→                                <XCircle className="size-3.5" />
+  1706→                                <span className="hidden xl:inline">Cancel</span>
+  1707→                              </Button>
+  1708→                            )}
+  1709→                            {refundable && (
+  1710→                              <Button
+  1711→                                size="sm"
+  1712→                                variant="outline"
+  1713→                                disabled={actionLoading}
+  1714→                                className="h-8 border-orange-500/30 text-orange-600 hover:bg-orange-500/10 dark:text-orange-400"
+  1715→                                title="Refund booking"
+  1716→                                onClick={() =>
+  1717→                                  setPendingAction({ booking: b, action: "refund" })
+  1718→                                }
+  1719→                              >
+  1720→                                <RotateCcw className="size-3.5" />
+  1721→                                <span className="hidden xl:inline">Refund</span>
+  1722→                              </Button>
+  1723→                            )}
+  1724→                            {isTerminal && (
+  1725→                              <span className="text-xs text-muted-foreground">—</span>
+  1726→                            )}
+  1727→                          </div>
+  1728→                        </TableCell>
+  1729→                      </TableRow>
+  1730→                    );
+  1731→                  })}
+  1732→                </TableBody>
+  1733→              </Table>
+  1734→            </div>
+  1735→          )}
+  1736→        </CardContent>
+  1737→      </Card>
+  1738→
+  1739→      <FraudDetailDialog
+  1740→        booking={fraudBooking}
+  1741→        open={!!fraudBooking}
+  1742→        onOpenChange={(o) => !o && setFraudBooking(null)}
+  1743→        onReview={handleReview}
+  1744→        loading={actionLoading}
+  1745→      />
+  1746→
+  1747→      <AlertDialog
+  1748→        open={!!pendingAction}
+  1749→        onOpenChange={(o) => !o && setPendingAction(null)}
+  1750→      >
+  1751→        <AlertDialogContent>
+  1752→          <AlertDialogHeader>
+  1753→            <AlertDialogTitle>
+  1754→              {pendingAction?.action === "cancel"
+  1755→                ? "Cancel this booking?"
+  1756→                : "Refund this booking?"}
+  1757→            </AlertDialogTitle>
+  1758→            <AlertDialogDescription>
+  1759→              {pendingAction?.action === "cancel"
+  1760→                ? `Booking ${pendingAction?.booking.reference} for ${pendingAction?.booking.customerName} will be cancelled. Availability will be restored. This action cannot be undone.`
+  1761→                : `Booking ${pendingAction?.booking.reference} for ${pendingAction?.booking.customerName} will be marked as refunded. Availability will be restored. This action cannot be undone.`}
+  1762→            </AlertDialogDescription>
+  1763→          </AlertDialogHeader>
+  1764→          <AlertDialogFooter>
+  1765→            <AlertDialogCancel disabled={actionLoading}>
+  1766→              Keep booking
+  1767→            </AlertDialogCancel>
+  1768→            <AlertDialogAction
+  1769→              disabled={actionLoading}
+  1770→              onClick={(e) => {
+  1771→                e.preventDefault();
+  1772→                void handleConfirmAction();
+  1773→              }}
+  1774→              className={cn(
+  1775→                pendingAction?.action === "cancel"
+  1776→                  ? "bg-destructive text-white hover:bg-destructive/90"
+  1777→                  : "bg-orange-500 text-white hover:bg-orange-600",
+  1778→              )}
+  1779→            >
+  1780→              {actionLoading && <Loader2 className="size-4 animate-spin" />}
+  1781→              {pendingAction?.action === "cancel"
+  1782→                ? "Yes, cancel"
+  1783→                : "Yes, refund"}
+  1784→            </AlertDialogAction>
+  1785→          </AlertDialogFooter>
+  1786→        </AlertDialogContent>
+  1787→      </AlertDialog>
+  1788→    </div>
+  1789→  );
+  1790→}
+  1791→
+  1792→/* ------------------------------------------------------------------ */
+  1793→/* Catalog Section                                                    */
+  1794→/* ------------------------------------------------------------------ */
+  1795→
+  1796→function CatalogSection() {
+  1797→  return (
+  1798→    <div className="space-y-6">
+  1799→      <SectionTitle
+  1800→        title="Catalog"
+  1801→        subtitle="Add, edit and remove experiences, hotels and destinations — no code required."
+  1802→        icon={BookOpen}
+  1803→      />
+  1804→      <CatalogManager />
+  1805→    </div>
+  1806→  );
+  1807→}
+  1808→
+  1809→function ExperiencesTable() {
+  1810→  const [items, setItems] = useState<ExperienceT[]>([]);
+  1811→  const [loading, setLoading] = useState(true);
+  1812→  const [error, setError] = useState<string | null>(null);
+  1813→
+  1814→  const load = useCallback(async () => {
+  1815→    setLoading(true);
+  1816→    setError(null);
+  1817→    try {
+  1818→      const res = await fetch("/api/experiences?limit=0", { cache: "no-store" });
+  1819→      if (!res.ok) throw new Error("Failed to load experiences");
+  1820→      const data = (await res.json()) as { experiences: ExperienceT[] };
+  1821→      setItems(data.experiences);
+  1822→    } catch (e) {
+  1823→      const msg = e instanceof Error ? e.message : "Unknown error";
+  1824→      setError(msg);
+  1825→      toast.error("Could not load experiences", { description: msg });
+  1826→    } finally {
+  1827→      setLoading(false);
+  1828→    }
+  1829→  }, []);
+  1830→
+  1831→  useEffect(() => {
+  1832→    void load();
+  1833→  }, [load]);
+  1834→
+  1835→  return (
+  1836→    <Card className="rounded-xl">
+  1837→      <CardHeader>
+  1838→        <div className="flex items-center justify-between">
+  1839→          <div>
+  1840→            <CardTitle className="text-base">Experiences</CardTitle>
+  1841→            <CardDescription>
+  1842→              {loading ? "Loading…" : `${items.length} experiences live`}
+  1843→            </CardDescription>
+  1844→          </div>
+  1845→          <Button variant="outline" size="sm" onClick={load}>
+  1846→            <RefreshCw className="size-4" /> Refresh
+  1847→          </Button>
+  1848→        </div>
+  1849→      </CardHeader>
+  1850→      <CardContent className="px-0 sm:px-6">
+  1851→        {loading ? (
+  1852→          <div className="space-y-2 px-4 sm:px-0">
+  1853→            {Array.from({ length: 6 }).map((_, i) => (
+  1854→              <Skeleton key={i} className="h-12 w-full rounded-md" />
+  1855→            ))}
+  1856→          </div>
+  1857→        ) : error ? (
+  1858→          <ErrorState message={error} onRetry={load} />
+  1859→        ) : (
+  1860→          <div className="max-h-[600px] overflow-y-auto">
+  1861→            <Table>
+  1862→              <TableHeader className="sticky top-0 z-10 bg-card">
+  1863→                <TableRow>
+  1864→                  <TableHead className="pl-4 sm:pl-6">Experience</TableHead>
+  1865→                  <TableHead>Destination</TableHead>
+  1866→                  <TableHead>Type</TableHead>
+  1867→                  <TableHead className="text-right">Price</TableHead>
+  1868→                  <TableHead>Rating</TableHead>
+  1869→                  <TableHead className="text-right">Reviews</TableHead>
+  1870→                  <TableHead className="text-right">Booked</TableHead>
+  1871→                  <TableHead className="text-right pr-4 sm:pr-6">Avail.</TableHead>
+  1872→                </TableRow>
+  1873→              </TableHeader>
+  1874→              <TableBody>
+  1875→                {items.map((e) => (
+  1876→                  <TableRow key={e.id}>
+  1877→                    <TableCell className="pl-4 sm:pl-6">
+  1878→                      <div className="flex flex-col">
+  1879→                        <span className="max-w-[260px] truncate font-medium text-foreground">
+  1880→                          {e.title}
+  1881→                        </span>
+  1882→                        <span className="text-xs text-muted-foreground">
+  1883→                          {e.duration} · {e.vendorName}
+  1884→                        </span>
+  1885→                      </div>
+  1886→                    </TableCell>
+  1887→                    <TableCell className="text-sm">
+  1888→                      <span className="flex items-center gap-1">
+  1889→                        <MapPin className="size-3 text-muted-foreground" />
+  1890→                        {e.destination?.name ?? "—"}
+  1891→                      </span>
+  1892→                    </TableCell>
+  1893→                    <TableCell>
+  1894→                      <Badge variant="outline" className="border-gold/30 text-gold-foreground">
+  1895→                        {e.type}
+  1896→                      </Badge>
+  1897→                    </TableCell>
+  1898→                    <TableCell className="text-right">
+  1899→                      <span className="font-semibold text-foreground">
+  1900→                        {money.format(e.price)}
+  1901→                      </span>
+  1902→                      {e.originalPrice && e.originalPrice > e.price && (
+  1903→                        <span className="ml-1 text-xs text-muted-foreground line-through">
+  1904→                          {money.format(e.originalPrice)}
+  1905→                        </span>
+  1906→                      )}
+  1907→                    </TableCell>
+  1908→                    <TableCell>
+  1909→                      <span className="flex items-center gap-1 text-sm font-medium">
+  1910→                        <Star className="size-3.5 fill-gold text-gold" />
+  1911→                        {e.rating.toFixed(1)}
+  1912→                      </span>
+  1913→                    </TableCell>
+  1914→                    <TableCell className="text-right text-sm text-muted-foreground">
+  1915→                      {compactNumber.format(e.reviewCount)}
+  1916→                    </TableCell>
+  1917→                    <TableCell className="text-right text-sm font-semibold text-primary">
+  1918→                      {compactNumber.format(e.bookedCount)}
+  1919→                    </TableCell>
+  1920→                    <TableCell className="text-right pr-4 sm:pr-6 text-sm text-muted-foreground">
+  1921→                      {e.availability}
+  1922→                    </TableCell>
+  1923→                  </TableRow>
+  1924→                ))}
+  1925→              </TableBody>
+  1926→            </Table>
+  1927→          </div>
+  1928→        )}
+  1929→      </CardContent>
+  1930→    </Card>
+  1931→  );
+  1932→}
+  1933→
+  1934→function HotelsTable() {
+  1935→  const [items, setItems] = useState<HotelT[]>([]);
+  1936→  const [loading, setLoading] = useState(true);
+  1937→  const [error, setError] = useState<string | null>(null);
+  1938→
+  1939→  const load = useCallback(async () => {
+  1940→    setLoading(true);
+  1941→    setError(null);
+  1942→    try {
+  1943→      const res = await fetch("/api/hotels?limit=0", { cache: "no-store" });
+  1944→      if (!res.ok) throw new Error("Failed to load hotels");
+  1945→      const data = (await res.json()) as { hotels: HotelT[] };
+  1946→      setItems(data.hotels);
+  1947→    } catch (e) {
+  1948→      const msg = e instanceof Error ? e.message : "Unknown error";
+  1949→      setError(msg);
+  1950→      toast.error("Could not load hotels", { description: msg });
+  1951→    } finally {
+  1952→      setLoading(false);
+  1953→    }
+  1954→  }, []);
+  1955→
+  1956→  useEffect(() => {
+  1957→    void load();
+  1958→  }, [load]);
+  1959→
+  1960→  return (
+  1961→    <Card className="rounded-xl">
+  1962→      <CardHeader>
+  1963→        <div className="flex items-center justify-between">
+  1964→          <div>
+  1965→            <CardTitle className="text-base">Hotels</CardTitle>
+  1966→            <CardDescription>
+  1967→              {loading ? "Loading…" : `${items.length} hotels live`}
+  1968→            </CardDescription>
+  1969→          </div>
+  1970→          <Button variant="outline" size="sm" onClick={load}>
+  1971→            <RefreshCw className="size-4" /> Refresh
+  1972→          </Button>
+  1973→        </div>
+  1974→      </CardHeader>
+  1975→      <CardContent className="px-0 sm:px-6">
+  1976→        {loading ? (
+  1977→          <div className="space-y-2 px-4 sm:px-0">
+  1978→            {Array.from({ length: 6 }).map((_, i) => (
+  1979→              <Skeleton key={i} className="h-12 w-full rounded-md" />
+  1980→            ))}
+  1981→          </div>
+  1982→        ) : error ? (
+  1983→          <ErrorState message={error} onRetry={load} />
+  1984→        ) : (
+  1985→          <div className="max-h-[600px] overflow-y-auto">
+  1986→            <Table>
+  1987→              <TableHeader className="sticky top-0 z-10 bg-card">
+  1988→                <TableRow>
+  1989→                  <TableHead className="pl-4 sm:pl-6">Hotel</TableHead>
+  1990→                  <TableHead>Destination</TableHead>
+  1991→                  <TableHead>Stars</TableHead>
+  1992→                  <TableHead className="text-right">Price / night</TableHead>
+  1993→                  <TableHead>Rating</TableHead>
+  1994→                  <TableHead className="text-right">Reviews</TableHead>
+  1995→                  <TableHead className="text-right pr-4 sm:pr-6">Rooms</TableHead>
+  1996→                </TableRow>
+  1997→              </TableHeader>
+  1998→              <TableBody>
+  1999→                {items.map((h) => (
+  2000→                  <TableRow key={h.id}>
+
+[showing lines 1-2000 of 3106; use offset=2001 with limit to continue reading]

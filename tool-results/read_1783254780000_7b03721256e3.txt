@@ -1,0 +1,2002 @@
+     1→"use client";
+     2→
+     3→/**
+     4→ * Wanderlust — Admin Dashboard
+     5→ * A premium, luxury-styled admin console for the Wanderlust tourism platform.
+     6→ * Sections: Overview, Bookings, Catalog, Analytics, AI Insights.
+     7→ */
+     8→
+     9→import { useCallback, useEffect, useMemo, useState } from "react";
+    10→import { format } from "date-fns";
+    11→import { toast } from "sonner";
+    12→import {
+    13→  Activity,
+    14→  AlertCircle,
+    15→  ArrowLeft,
+    16→  ArrowUpRight,
+    17→  BarChart3,
+    18→  BookOpen,
+    19→  CalendarCheck,
+    20→  CheckCircle2,
+    21→  Clock,
+    22→  Crown,
+    23→  DollarSign,
+    24→  Hotel as HotelIcon,
+    25→  LayoutDashboard,
+    26→  Loader2,
+    27→  LogOut,
+    28→  Mail,
+    29→  MapPin,
+    30→  Plane,
+    31→  RefreshCw,
+    32→  RotateCcw,
+    33→  Search,
+    34→  Sparkle,
+    35→  Sparkles,
+    36→  Star,
+    37→  TrendingUp,
+    38→  Users,
+    39→  Wallet,
+    40→  XCircle,
+    41→} from "lucide-react";
+    42→
+    43→import type { BookingT, ExperienceT, HotelT } from "@/lib/types";
+    44→import { cn } from "@/lib/utils";
+    45→
+    46→import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+    47→import { Badge } from "@/components/ui/badge";
+    48→import { Button } from "@/components/ui/button";
+    49→import {
+    50→  Card,
+    51→  CardContent,
+    52→  CardDescription,
+    53→  CardHeader,
+    54→  CardTitle,
+    55→} from "@/components/ui/card";
+    56→import { Input } from "@/components/ui/input";
+    57→import { Progress } from "@/components/ui/progress";
+    58→import {
+    59→  Select,
+    60→  SelectContent,
+    61→  SelectItem,
+    62→  SelectTrigger,
+    63→  SelectValue,
+    64→} from "@/components/ui/select";
+    65→import { Separator } from "@/components/ui/separator";
+    66→import { Skeleton } from "@/components/ui/skeleton";
+    67→import {
+    68→  Table,
+    69→  TableBody,
+    70→  TableCell,
+    71→  TableHead,
+    72→  TableHeader,
+    73→  TableRow,
+    74→} from "@/components/ui/table";
+    75→import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+    76→import { CatalogManager } from "@/components/site/catalog-manager";
+    77→
+    78→/* ------------------------------------------------------------------ */
+    79→/* Types                                                              */
+    80→/* ------------------------------------------------------------------ */
+    81→
+    82→interface KPIs {
+    83→  revenue: number;
+    84→  refunded: number;
+    85→  totalBookings: number;
+    86→  totalExperiences: number;
+    87→  totalHotels: number;
+    88→  totalDestinations: number;
+    89→  totalReviews: number;
+    90→  totalUsers: number;
+    91→  avgOrderValue: number;
+    92→}
+    93→
+    94→interface RevenueTrendPoint {
+    95→  date: string;
+    96→  revenue: number;
+    97→  bookings: number;
+    98→}
+    99→
+   100→interface RecentBooking {
+   101→  id: string;
+   102→  reference: string;
+   103→  type: string;
+   104→  customerName: string;
+   105→  totalAmount: number;
+   106→  status: string;
+   107→  createdAt: string;
+   108→  title: string;
+   109→}
+   110→
+   111→interface AdminStats {
+   112→  kpis: KPIs;
+   113→  revenueByType: { EXPERIENCE: number; HOTEL: number };
+   114→  statusBreakdown: {
+   115→    CONFIRMED: number;
+   116→    COMPLETED: number;
+   117→    CANCELLED: number;
+   118→    REFUNDED: number;
+   119→    PENDING: number;
+   120→  };
+   121→  revenueTrend: RevenueTrendPoint[];
+   122→  recentBookings: RecentBooking[];
+   123→}
+   124→
+   125→type SectionId = "overview" | "bookings" | "catalog" | "analytics" | "ai" | "notifications";
+   126→
+   127→/* ------------------------------------------------------------------ */
+   128→/* Formatters                                                         */
+   129→/* ------------------------------------------------------------------ */
+   130→
+   131→const money = new Intl.NumberFormat("en-US", {
+   132→  style: "currency",
+   133→  currency: "USD",
+   134→  maximumFractionDigits: 0,
+   135→});
+   136→
+   137→const moneyDetailed = new Intl.NumberFormat("en-US", {
+   138→  style: "currency",
+   139→  currency: "USD",
+   140→  maximumFractionDigits: 2,
+   141→});
+   142→
+   143→const compactMoney = new Intl.NumberFormat("en-US", {
+   144→  style: "currency",
+   145→  currency: "USD",
+   146→  notation: "compact",
+   147→  maximumFractionDigits: 1,
+   148→});
+   149→
+   150→const compactNumber = new Intl.NumberFormat("en-US", {
+   151→  notation: "compact",
+   152→  maximumFractionDigits: 1,
+   153→});
+   154→
+   155→function fmtDate(iso: string): string {
+   156→  try {
+   157→    return format(new Date(iso), "MMM d, yyyy");
+   158→  } catch {
+   159→    return "—";
+   160→  }
+   161→}
+   162→
+   163→function fmtShortDate(iso: string): string {
+   164→  try {
+   165→    return format(new Date(iso), "MMM d");
+   166→  } catch {
+   167→    return iso;
+   168→  }
+   169→}
+   170→
+   171→/* ------------------------------------------------------------------ */
+   172→/* Status helpers                                                     */
+   173→/* ------------------------------------------------------------------ */
+   174→
+   175→function statusBadgeClass(status: string): string {
+   176→  switch (status) {
+   177→    case "CONFIRMED":
+   178→      return "bg-primary text-primary-foreground border-transparent";
+   179→    case "COMPLETED":
+   180→      return "bg-emerald-600 text-white border-transparent";
+   181→    case "CANCELLED":
+   182→      return "bg-destructive text-white border-transparent";
+   183→    case "REFUNDED":
+   184→      return "bg-amber-500 text-white border-transparent";
+   185→    case "PENDING":
+   186→      return "bg-muted text-muted-foreground border-border";
+   187→    default:
+   188→      return "bg-muted text-muted-foreground border-border";
+   189→  }
+   190→}
+   191→
+   192→function StatusBadge({ status }: { status: string }) {
+   193→  return (
+   194→    <span
+   195→      className={cn(
+   196→        "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-semibold tracking-wide",
+   197→        statusBadgeClass(status),
+   198→      )}
+   199→    >
+   200→      {status}
+   201→    </span>
+   202→  );
+   203→}
+   204→
+   205→function paymentBadgeClass(paymentStatus: string): string {
+   206→  switch (paymentStatus) {
+   207→    case "PAID":
+   208→      return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-900";
+   209→    case "PENDING":
+   210→      return "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-900";
+   211→    case "REFUNDED":
+   212→      return "bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-900";
+   213→    case "FAILED":
+   214→      return "bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-900";
+   215→    default:
+   216→      return "bg-muted text-muted-foreground border-border";
+   217→  }
+   218→}
+   219→
+   220→function PaymentBadge({ status }: { status: string }) {
+   221→  return (
+   222→    <span
+   223→      className={cn(
+   224→        "inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium",
+   225→        paymentBadgeClass(status),
+   226→      )}
+   227→    >
+   228→      {status}
+   229→    </span>
+   230→  );
+   231→}
+   232→
+   233→function bookingItemTitle(b: BookingT): string {
+   234→  return b.experience?.title || b.hotel?.name || "—";
+   235→}
+   236→
+   237→function bookingDestination(b: BookingT): string {
+   238→  return (
+   239→    b.experience?.destination?.name ||
+   240→    b.hotel?.destination?.name ||
+   241→    "—"
+   242→  );
+   243→}
+   244→
+   245→/* ------------------------------------------------------------------ */
+   246→/* Navigation                                                         */
+   247→/* ------------------------------------------------------------------ */
+   248→
+   249→const SECTIONS: {
+   250→  id: SectionId;
+   251→  label: string;
+   252→  icon: React.ComponentType<{ className?: string }>;
+   253→}[] = [
+   254→  { id: "overview", label: "Overview", icon: LayoutDashboard },
+   255→  { id: "bookings", label: "Bookings", icon: CalendarCheck },
+   256→  { id: "catalog", label: "Catalog", icon: BookOpen },
+   257→  { id: "analytics", label: "Analytics", icon: BarChart3 },
+   258→  { id: "ai", label: "AI Insights", icon: Sparkles },
+   259→  { id: "notifications", label: "Notifications", icon: Mail },
+   260→];
+   261→
+   262→/* ------------------------------------------------------------------ */
+   263→/* Shared small UI helpers                                            */
+   264→/* ------------------------------------------------------------------ */
+   265→
+   266→function SectionTitle({
+   267→  title,
+   268→  subtitle,
+   269→  icon: Icon,
+   270→  action,
+   271→}: {
+   272→  title: string;
+   273→  subtitle?: string;
+   274→  icon: React.ComponentType<{ className?: string }>;
+   275→  action?: React.ReactNode;
+   276→}) {
+   277→  return (
+   278→    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+   279→      <div className="flex items-start gap-3">
+   280→        <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+   281→          <Icon className="size-5" />
+   282→        </div>
+   283→        <div>
+   284→          <h2
+   285→            className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl"
+   286→            style={{ fontFamily: "var(--font-display)" }}
+   287→          >
+   288→            {title}
+   289→          </h2>
+   290→          {subtitle && (
+   291→            <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>
+   292→          )}
+   293→        </div>
+   294→      </div>
+   295→      {action}
+   296→    </div>
+   297→  );
+   298→}
+   299→
+   300→function ErrorState({
+   301→  message,
+   302→  onRetry,
+   303→}: {
+   304→  message: string;
+   305→  onRetry?: () => void;
+   306→}) {
+   307→  return (
+   308→    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-destructive/30 bg-destructive/5 p-10 text-center">
+   309→      <AlertCircle className="size-8 text-destructive" />
+   310→      <div>
+   311→        <p className="font-medium text-foreground">{message}</p>
+   312→        <p className="mt-1 text-sm text-muted-foreground">
+   313→          Please try again in a moment.
+   314→        </p>
+   315→      </div>
+   316→      {onRetry && (
+   317→        <Button variant="outline" size="sm" onClick={onRetry}>
+   318→          <RefreshCw className="size-4" /> Retry
+   319→        </Button>
+   320→      )}
+   321→    </div>
+   322→  );
+   323→}
+   324→
+   325→/* ------------------------------------------------------------------ */
+   326→/* Charts (custom div-based)                                          */
+   327→/* ------------------------------------------------------------------ */
+   328→
+   329→function RevenueBarChart({
+   330→  data,
+   331→  height = 220,
+   332→}: {
+   333→  data: RevenueTrendPoint[];
+   334→  height?: number;
+   335→}) {
+   336→  const max = Math.max(1, ...data.map((d) => d.revenue));
+   337→  return (
+   338→    <div className="w-full">
+   339→      <div
+   340→        className="flex items-end gap-2 sm:gap-3"
+   341→        style={{ height }}
+   342→      >
+   343→        {data.map((d) => {
+   344→          const h = Math.max(4, Math.round((d.revenue / max) * 100));
+   345→          return (
+   346→            <div
+   347→              key={d.date}
+   348→              className="group relative flex flex-1 flex-col items-center justify-end"
+   349→              style={{ height: "100%" }}
+   350→            >
+   351→              {/* tooltip */}
+   352→              <div className="pointer-events-none absolute -top-2 left-1/2 z-10 -translate-x-1/2 -translate-y-full rounded-lg border border-border bg-popover px-3 py-2 text-xs shadow-md opacity-0 transition-opacity group-hover:opacity-100 whitespace-nowrap">
+   353→                <div className="font-semibold text-foreground">
+   354→                  {fmtShortDate(d.date)}
+   355→                </div>
+   356→                <div className="text-gold font-semibold">
+   357→                  {money.format(d.revenue)}
+   358→                </div>
+   359→                <div className="text-muted-foreground">
+   360→                  {d.bookings} booking{d.bookings === 1 ? "" : "s"}
+   361→                </div>
+   362→              </div>
+   363→              {/* track */}
+   364→              <div className="relative flex w-full max-w-[44px] flex-1 items-end overflow-hidden rounded-lg bg-primary/8">
+   365→                <div
+   366→                  className="gold-gradient w-full rounded-lg transition-all duration-500 ease-out"
+   367→                  style={{ height: `${h}%` }}
+   368→                />
+   369→              </div>
+   370→            </div>
+   371→          );
+   372→        })}
+   373→      </div>
+   374→      <div className="mt-2 flex items-center justify-between gap-2 sm:gap-3">
+   375→        {data.map((d) => (
+   376→          <div
+   377→            key={d.date}
+   378→            className="flex-1 text-center text-[11px] font-medium text-muted-foreground"
+   379→          >
+   380→            {fmtShortDate(d.date)}
+   381→          </div>
+   382→        ))}
+   383→      </div>
+   384→    </div>
+   385→  );
+   386→}
+   387→
+   388→function StatusStackedBar({
+   389→  breakdown,
+   390→}: {
+   391→  breakdown: AdminStats["statusBreakdown"];
+   392→}) {
+   393→  const total =
+   394→    breakdown.CONFIRMED +
+   395→    breakdown.COMPLETED +
+   396→    breakdown.CANCELLED +
+   397→    breakdown.REFUNDED +
+   398→    breakdown.PENDING;
+   399→  const segments = [
+   400→    { label: "Confirmed", value: breakdown.CONFIRMED, color: "bg-primary" },
+   401→    { label: "Completed", value: breakdown.COMPLETED, color: "bg-emerald-600" },
+   402→    { label: "Cancelled", value: breakdown.CANCELLED, color: "bg-destructive" },
+   403→    { label: "Refunded", value: breakdown.REFUNDED, color: "bg-amber-500" },
+   404→    { label: "Pending", value: breakdown.PENDING, color: "bg-muted-foreground/50" },
+   405→  ];
+   406→  return (
+   407→    <div>
+   408→      <div className="flex h-3 w-full overflow-hidden rounded-full bg-muted">
+   409→        {segments.map(
+   410→          (s) =>
+   411→            s.value > 0 && (
+   412→              <div
+   413→                key={s.label}
+   414→                className={cn("h-full transition-all", s.color)}
+   415→                style={{ width: `${(s.value / Math.max(1, total)) * 100}%` }}
+   416→                title={`${s.label}: ${s.value}`}
+   417→              />
+   418→            ),
+   419→        )}
+   420→      </div>
+   421→      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+   422→        {segments.map((s) => (
+   423→          <div key={s.label} className="flex items-center gap-2">
+   424→            <span className={cn("size-2.5 rounded-full", s.color)} />
+   425→            <div className="min-w-0">
+   426→              <div className="text-xs text-muted-foreground">{s.label}</div>
+   427→              <div className="text-sm font-semibold text-foreground">
+   428→                {s.value}
+   429→              </div>
+   430→            </div>
+   431→          </div>
+   432→        ))}
+   433→      </div>
+   434→    </div>
+   435→  );
+   436→}
+   437→
+   438→function RevenueDonut({
+   439→  experience,
+   440→  hotel,
+   441→}: {
+   442→  experience: number;
+   443→  hotel: number;
+   444→}) {
+   445→  const total = Math.max(1, experience + hotel);
+   446→  const expPct = (experience / total) * 100;
+   447→  const hotelPct = 100 - expPct;
+   448→  // conic-gradient: gold then teal
+   449→  const gradient = `conic-gradient(var(--gold) 0% ${expPct}%, var(--primary) ${expPct}% 100%)`;
+   450→  return (
+   451→    <div className="flex items-center gap-6">
+   452→      <div
+   453→        className="relative size-32 shrink-0 rounded-full"
+   454→        style={{ background: gradient }}
+   455→      >
+   456→        <div className="absolute inset-[14px] flex flex-col items-center justify-center rounded-full bg-card shadow-inner">
+   457→          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+   458→            Total
+   459→          </span>
+   460→          <span className="text-sm font-bold text-foreground">
+   461→            {compactMoney.format(total)}
+   462→          </span>
+   463→        </div>
+   464→      </div>
+   465→      <div className="flex-1 space-y-3">
+   466→        <div>
+   467→          <div className="mb-1 flex items-center justify-between text-sm">
+   468→            <span className="flex items-center gap-2 font-medium text-foreground">
+   469→              <span className="size-2.5 rounded-full bg-gold" /> Experiences
+   470→            </span>
+   471→            <span className="text-gold font-semibold">
+   472→              {expPct.toFixed(0)}%
+   473→            </span>
+   474→          </div>
+   475→          <Progress value={expPct} className="h-2 bg-muted [&>[data-slot=progress-indicator]]:bg-gold" />
+   476→          <div className="mt-1 text-xs text-muted-foreground">
+   477→            {money.format(experience)}
+   478→          </div>
+   479→        </div>
+   480→        <div>
+   481→          <div className="mb-1 flex items-center justify-between text-sm">
+   482→            <span className="flex items-center gap-2 font-medium text-foreground">
+   483→              <span className="size-2.5 rounded-full bg-primary" /> Hotels
+   484→            </span>
+   485→            <span className="text-primary font-semibold">
+   486→              {hotelPct.toFixed(0)}%
+   487→            </span>
+   488→          </div>
+   489→          <Progress value={hotelPct} className="h-2 bg-muted" />
+   490→          <div className="mt-1 text-xs text-muted-foreground">
+   491→            {money.format(hotel)}
+   492→          </div>
+   493→        </div>
+   494→      </div>
+   495→    </div>
+   496→  );
+   497→}
+   498→
+   499→/* ------------------------------------------------------------------ */
+   500→/* KPI Card                                                           */
+   501→/* ------------------------------------------------------------------ */
+   502→
+   503→function KpiCard({
+   504→  label,
+   505→  value,
+   506→  subtitle,
+   507→  icon: Icon,
+   508→  accent = "default",
+   509→}: {
+   510→  label: string;
+   511→  value: string;
+   512→  subtitle: string;
+   513→  icon: React.ComponentType<{ className?: string }>;
+   514→  accent?: "default" | "gold";
+   515→}) {
+   516→  return (
+   517→    <Card className="overflow-hidden rounded-xl border-border/70 shadow-sm transition-shadow hover:shadow-md">
+   518→      <CardHeader className="pb-2">
+   519→        <div className="flex items-center justify-between">
+   520→          <CardDescription className="text-xs font-medium uppercase tracking-wider">
+   521→            {label}
+   522→          </CardDescription>
+   523→          <div
+   524→            className={cn(
+   525→              "flex size-9 items-center justify-center rounded-lg",
+   526→              accent === "gold"
+   527→                ? "bg-gold/15 text-gold"
+   528→                : "bg-primary/10 text-primary",
+   529→            )}
+   530→          >
+   531→            <Icon className="size-4" />
+   532→          </div>
+   533→        </div>
+   534→      </CardHeader>
+   535→      <CardContent className="pt-0">
+   536→        <div
+   537→          className={cn(
+   538→            "text-2xl font-bold tracking-tight sm:text-3xl",
+   539→            accent === "gold" && "gold-text",
+   540→          )}
+   541→          style={{ fontFamily: "var(--font-display)" }}
+   542→        >
+   543→          {value}
+   544→        </div>
+   545→        <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
+   546→      </CardContent>
+   547→    </Card>
+   548→  );
+   549→}
+   550→
+   551→function KpiSkeleton() {
+   552→  return (
+   553→    <Card className="rounded-xl">
+   554→      <CardHeader className="pb-2">
+   555→        <div className="flex items-center justify-between">
+   556→          <Skeleton className="h-3 w-20" />
+   557→          <Skeleton className="size-9 rounded-lg" />
+   558→        </div>
+   559→      </CardHeader>
+   560→      <CardContent className="pt-0">
+   561→        <Skeleton className="h-8 w-28" />
+   562→        <Skeleton className="mt-2 h-3 w-24" />
+   563→      </CardContent>
+   564→    </Card>
+   565→  );
+   566→}
+   567→
+   568→/* ------------------------------------------------------------------ */
+   569→/* Main component                                                     */
+   570→/* ------------------------------------------------------------------ */
+   571→
+   572→export function AdminDashboard({
+   573→  onExit,
+   574→  onLogout,
+   575→}: {
+   576→  onExit?: () => void;
+   577→  onLogout?: () => void;
+   578→}) {
+   579→  const [section, setSection] = useState<SectionId>("overview");
+   580→
+   581→  return (
+   582→    <div className="flex min-h-screen flex-col bg-background">
+   583→      <Header onExit={onExit} onLogout={onLogout} />
+   584→      <div className="flex flex-1">
+   585→        {/* Desktop sidebar */}
+   586→        <aside className="hidden w-64 shrink-0 md:block">
+   587→          <Sidebar section={section} setSection={setSection} onLogout={onLogout} />
+   588→        </aside>
+   589→
+   590→        <main className="flex min-w-0 flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8">
+   591→          {/* Mobile tab bar */}
+   592→          <MobileTabBar section={section} setSection={setSection} />
+   593→
+   594→          {section === "overview" && <OverviewSection />}
+   595→          {section === "bookings" && <BookingsSection />}
+   596→          {section === "catalog" && <CatalogSection />}
+   597→          {section === "analytics" && <AnalyticsSection />}
+   598→          {section === "ai" && <AIInsightsSection />}
+   599→          {section === "notifications" && <NotificationsSection />}
+   600→        </main>
+   601→      </div>
+   602→    </div>
+   603→  );
+   604→}
+   605→
+   606→/* ------------------------------------------------------------------ */
+   607→/* Header                                                             */
+   608→/* ------------------------------------------------------------------ */
+   609→
+   610→function Header({
+   611→  onExit,
+   612→  onLogout,
+   613→}: {
+   614→  onExit?: () => void;
+   615→  onLogout?: () => void;
+   616→}) {
+   617→  return (
+   618→    <header className="sticky top-0 z-30 border-b border-border/70 bg-background/85 backdrop-blur-md">
+   619→      <div className="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
+   620→        <div className="flex items-center gap-3">
+   621→          <div className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+   622→            <Plane className="size-5" />
+   623→          </div>
+   624→          <div className="flex items-baseline gap-2">
+   625→            <span
+   626→              className="text-xl font-bold tracking-tight text-foreground"
+   627→              style={{ fontFamily: "var(--font-display)" }}
+   628→            >
+   629→              Wanderlust
+   630→            </span>
+   631→            <Badge className="border-gold/30 bg-gold/15 text-gold-foreground">
+   632→              <Crown className="size-3" />
+   633→              Admin Console
+   634→            </Badge>
+   635→          </div>
+   636→        </div>
+   637→
+   638→        <div className="flex items-center gap-2">
+   639→          <div className="hidden items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 sm:flex">
+   640→            <span className="size-2 animate-pulse rounded-full bg-emerald-500" />
+   641→            <span className="text-xs font-medium text-muted-foreground">
+   642→              Live data
+   643→            </span>
+   644→          </div>
+   645→          <Avatar className="size-9 border border-border">
+   646→            <AvatarFallback className="bg-primary text-primary-foreground text-xs font-semibold">
+   647→              AD
+   648→            </AvatarFallback>
+   649→          </Avatar>
+   650→          {onLogout && (
+   651→            <Button variant="ghost" size="sm" onClick={onLogout} title="Sign out">
+   652→              <LogOut className="size-4" />
+   653→              <span className="hidden sm:inline">Sign out</span>
+   654→            </Button>
+   655→          )}
+   656→          {onExit && (
+   657→            <Button variant="outline" size="sm" onClick={onExit}>
+   658→              <ArrowLeft className="size-4" />
+   659→              <span className="hidden sm:inline">Back to Site</span>
+   660→            </Button>
+   661→          )}
+   662→        </div>
+   663→      </div>
+   664→    </header>
+   665→  );
+   666→}
+   667→
+   668→/* ------------------------------------------------------------------ */
+   669→/* Sidebar (desktop)                                                  */
+   670→/* ------------------------------------------------------------------ */
+   671→
+   672→function Sidebar({
+   673→  section,
+   674→  setSection,
+   675→  onLogout,
+   676→}: {
+   677→  section: SectionId;
+   678→  setSection: (s: SectionId) => void;
+   679→  onLogout?: () => void;
+   680→}) {
+   681→  return (
+   682→    <nav className="sticky top-16 flex h-[calc(100vh-4rem)] flex-col gap-2 border-r border-border/70 bg-card/40 p-4">
+   683→      <p className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+   684→        Workspace
+   685→      </p>
+   686→      {SECTIONS.map((s) => {
+   687→        const active = s.id === section;
+   688→        return (
+   689→          <button
+   690→            key={s.id}
+   691→            onClick={() => setSection(s.id)}
+   692→            className={cn(
+   693→              "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all",
+   694→              active
+   695→                ? "bg-primary text-primary-foreground shadow-sm"
+   696→                : "text-foreground/80 hover:bg-accent hover:text-foreground",
+   697→            )}
+   698→          >
+   699→            <s.icon
+   700→              className={cn(
+   701→                "size-4 shrink-0 transition-colors",
+   702→                active ? "text-gold" : "text-muted-foreground group-hover:text-foreground",
+   703→              )}
+   704→            />
+   705→            {s.label}
+   706→            {active && <span className="ml-auto size-1.5 rounded-full bg-gold" />}
+   707→          </button>
+   708→        );
+   709→      })}
+   710→
+   711→      <Separator className="my-2" />
+   712→
+   713→      <div className="rounded-xl border border-gold/20 bg-gold/5 p-4">
+   714→        <div className="flex items-center gap-2">
+   715→          <Sparkles className="size-4 text-gold" />
+   716→          <p className="text-sm font-semibold text-foreground">AI Concierge</p>
+   717→        </div>
+   718→        <p className="mt-1 text-xs text-muted-foreground">
+   719→          Generate insights and price predictions from your live booking data.
+   720→        </p>
+   721→        <Button
+   722→          size="sm"
+   723→          className="mt-3 w-full bg-primary text-primary-foreground hover:bg-primary/90"
+   724→          onClick={() => setSection("ai")}
+   725→        >
+   726→          Open AI Insights
+   727→        </Button>
+   728→      </div>
+   729→
+   730→      {onLogout && (
+   731→        <Button
+   732→          variant="ghost"
+   733→          size="sm"
+   734→          className="mt-2 justify-start gap-2 text-muted-foreground hover:text-foreground"
+   735→          onClick={onLogout}
+   736→        >
+   737→          <LogOut className="size-4" />
+   738→          Sign out
+   739→        </Button>
+   740→      )}
+   741→    </nav>
+   742→  );
+   743→}
+   744→
+   745→/* ------------------------------------------------------------------ */
+   746→/* Mobile tab bar                                                     */
+   747→/* ------------------------------------------------------------------ */
+   748→
+   749→function MobileTabBar({
+   750→  section,
+   751→  setSection,
+   752→}: {
+   753→  section: SectionId;
+   754→  setSection: (s: SectionId) => void;
+   755→}) {
+   756→  return (
+   757→    <div className="md:hidden -mx-4 px-4 sm:-mx-6 sm:px-6">
+   758→      <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+   759→        {SECTIONS.map((s) => {
+   760→          const active = s.id === section;
+   761→          return (
+   762→            <button
+   763→              key={s.id}
+   764→              onClick={() => setSection(s.id)}
+   765→              className={cn(
+   766→                "flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-2 text-xs font-medium transition-all",
+   767→                active
+   768→                  ? "border-transparent bg-primary text-primary-foreground"
+   769→                  : "border-border bg-card text-muted-foreground",
+   770→              )}
+   771→            >
+   772→              <s.icon className={cn("size-3.5", active && "text-gold")} />
+   773→              {s.label}
+   774→            </button>
+   775→          );
+   776→        })}
+   777→      </div>
+   778→    </div>
+   779→  );
+   780→}
+   781→
+   782→/* ------------------------------------------------------------------ */
+   783→/* Overview Section                                                   */
+   784→/* ------------------------------------------------------------------ */
+   785→
+   786→function OverviewSection() {
+   787→  const [stats, setStats] = useState<AdminStats | null>(null);
+   788→  const [loading, setLoading] = useState(true);
+   789→  const [error, setError] = useState<string | null>(null);
+   790→
+   791→  const load = useCallback(async () => {
+   792→    setLoading(true);
+   793→    setError(null);
+   794→    try {
+   795→      const res = await fetch("/api/admin/stats", { cache: "no-store" });
+   796→      if (!res.ok) throw new Error("Failed to load stats");
+   797→      const data = (await res.json()) as AdminStats;
+   798→      setStats(data);
+   799→    } catch (e) {
+   800→      const msg = e instanceof Error ? e.message : "Unknown error";
+   801→      setError(msg);
+   802→      toast.error("Could not load dashboard stats", { description: msg });
+   803→    } finally {
+   804→      setLoading(false);
+   805→    }
+   806→  }, []);
+   807→
+   808→  useEffect(() => {
+   809→    void load();
+   810→  }, [load]);
+   811→
+   812→  if (loading) {
+   813→    return (
+   814→      <div className="space-y-6">
+   815→        <SectionTitle
+   816→          title="Overview"
+   817→          subtitle="Performance snapshot across the Wanderlust platform."
+   818→          icon={LayoutDashboard}
+   819→        />
+   820→        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+   821→          {Array.from({ length: 4 }).map((_, i) => (
+   822→            <KpiSkeleton key={i} />
+   823→          ))}
+   824→        </div>
+   825→        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+   826→          <Skeleton className="h-80 rounded-xl lg:col-span-2" />
+   827→          <Skeleton className="h-80 rounded-xl" />
+   828→        </div>
+   829→      </div>
+   830→    );
+   831→  }
+   832→
+   833→  if (error || !stats) {
+   834→    return (
+   835→      <div className="space-y-6">
+   836→        <SectionTitle
+   837→          title="Overview"
+   838→          subtitle="Performance snapshot across the Wanderlust platform."
+   839→          icon={LayoutDashboard}
+   840→        />
+   841→        <ErrorState
+   842→          message={error ?? "No data available"}
+   843→          onRetry={load}
+   844→        />
+   845→      </div>
+   846→    );
+   847→  }
+   848→
+   849→  const { kpis, revenueByType, statusBreakdown, revenueTrend, recentBookings } =
+   850→    stats;
+   851→  const totalRev =
+   852→    revenueByType.EXPERIENCE + revenueByType.HOTEL || kpis.revenue;
+   853→
+   854→  return (
+   855→    <div className="space-y-6">
+   856→      <SectionTitle
+   857→        title="Overview"
+   858→        subtitle="Performance snapshot across the Wanderlust platform."
+   859→        icon={LayoutDashboard}
+   860→        action={
+   861→          <Button variant="outline" size="sm" onClick={load}>
+   862→            <RefreshCw className="size-4" /> Refresh
+   863→          </Button>
+   864→        }
+   865→      />
+   866→
+   867→      {/* KPI Row */}
+   868→      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+   869→        <KpiCard
+   870→          label="Total Revenue"
+   871→          value={money.format(kpis.revenue)}
+   872→          subtitle={`${money.format(kpis.refunded)} refunded`}
+   873→          icon={DollarSign}
+   874→          accent="gold"
+   875→        />
+   876→        <KpiCard
+   877→          label="Total Bookings"
+   878→          value={compactNumber.format(kpis.totalBookings)}
+   879→          subtitle={`${kpis.totalExperiences} experiences · ${kpis.totalHotels} hotels`}
+   880→          icon={CalendarCheck}
+   881→        />
+   882→        <KpiCard
+   883→          label="Avg Order Value"
+   884→          value={money.format(kpis.avgOrderValue)}
+   885→          subtitle={`${kpis.totalDestinations} destinations live`}
+   886→          icon={Wallet}
+   887→        />
+   888→        <KpiCard
+   889→          label="Active Users"
+   890→          value={compactNumber.format(kpis.totalUsers)}
+   891→          subtitle={`${kpis.totalReviews} reviews collected`}
+   892→          icon={Users}
+   893→        />
+   894→      </div>
+   895→
+   896→      {/* Revenue Trend + Revenue by type */}
+   897→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+   898→        <Card className="rounded-xl lg:col-span-2">
+   899→          <CardHeader>
+   900→            <div className="flex items-center justify-between">
+   901→              <div>
+   902→                <CardTitle className="text-base">Revenue Trend</CardTitle>
+   903→                <CardDescription>Last 7 days</CardDescription>
+   904→              </div>
+   905→              <Badge
+   906→                variant="outline"
+   907→                className="border-gold/30 text-gold-foreground"
+   908→              >
+   909→                <TrendingUp className="size-3" />
+   910→                Live
+   911→              </Badge>
+   912→            </div>
+   913→          </CardHeader>
+   914→          <CardContent>
+   915→            <RevenueBarChart data={revenueTrend} />
+   916→          </CardContent>
+   917→        </Card>
+   918→
+   919→        <Card className="rounded-xl">
+   920→          <CardHeader>
+   921→            <CardTitle className="text-base">Revenue by Type</CardTitle>
+   922→            <CardDescription>Experiences vs Hotels</CardDescription>
+   923→          </CardHeader>
+   924→          <CardContent>
+   925→            <RevenueDonut
+   926→              experience={revenueByType.EXPERIENCE}
+   927→              hotel={revenueByType.HOTEL}
+   928→            />
+   929→            <Separator className="my-4" />
+   930→            <div className="flex items-center justify-between text-sm">
+   931→              <span className="text-muted-foreground">Total net revenue</span>
+   932→              <span
+   933→                className="font-bold text-gold"
+   934→                style={{ fontFamily: "var(--font-display)" }}
+   935→              >
+   936→                {money.format(totalRev)}
+   937→              </span>
+   938→            </div>
+   939→          </CardContent>
+   940→        </Card>
+   941→      </div>
+   942→
+   943→      {/* Status breakdown + Recent bookings */}
+   944→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+   945→        <Card className="rounded-xl">
+   946→          <CardHeader>
+   947→            <CardTitle className="text-base">Booking Status</CardTitle>
+   948→            <CardDescription>Breakdown of all bookings</CardDescription>
+   949→          </CardHeader>
+   950→          <CardContent>
+   951→            <StatusStackedBar breakdown={statusBreakdown} />
+   952→          </CardContent>
+   953→        </Card>
+   954→
+   955→        <Card className="rounded-xl lg:col-span-2">
+   956→          <CardHeader>
+   957→            <div className="flex items-center justify-between">
+   958→              <div>
+   959→                <CardTitle className="text-base">Recent Bookings</CardTitle>
+   960→                <CardDescription>Latest guest reservations</CardDescription>
+   961→              </div>
+   962→              <Badge variant="secondary">
+   963→                {recentBookings.length} recent
+   964→              </Badge>
+   965→            </div>
+   966→          </CardHeader>
+   967→          <CardContent className="px-0 sm:px-6">
+   968→            <div className="max-h-80 overflow-y-auto">
+   969→              <Table>
+   970→                <TableHeader>
+   971→                  <TableRow>
+   972→                    <TableHead className="pl-4 sm:pl-0">Reference</TableHead>
+   973→                    <TableHead>Guest</TableHead>
+   974→                    <TableHead className="hidden md:table-cell">
+   975→                      Item
+   976→                    </TableHead>
+   977→                    <TableHead className="text-right">Amount</TableHead>
+   978→                    <TableHead>Status</TableHead>
+   979→                    <TableHead className="hidden lg:table-cell text-right pr-4 sm:pr-0">
+   980→                      Date
+   981→                    </TableHead>
+   982→                  </TableRow>
+   983→                </TableHeader>
+   984→                <TableBody>
+   985→                  {recentBookings.map((b) => (
+   986→                    <TableRow key={b.id}>
+   987→                      <TableCell className="pl-4 sm:pl-0 font-mono text-xs font-medium text-primary">
+   988→                        {b.reference}
+   989→                      </TableCell>
+   990→                      <TableCell className="font-medium">
+   991→                        {b.customerName}
+   992→                      </TableCell>
+   993→                      <TableCell className="hidden md:table-cell max-w-[200px] truncate text-muted-foreground">
+   994→                        {b.title}
+   995→                      </TableCell>
+   996→                      <TableCell className="text-right font-semibold">
+   997→                        {money.format(b.totalAmount)}
+   998→                      </TableCell>
+   999→                      <TableCell>
+  1000→                        <StatusBadge status={b.status} />
+  1001→                      </TableCell>
+  1002→                      <TableCell className="hidden lg:table-cell text-right pr-4 sm:pr-0 text-xs text-muted-foreground">
+  1003→                        {fmtDate(b.createdAt)}
+  1004→                      </TableCell>
+  1005→                    </TableRow>
+  1006→                  ))}
+  1007→                </TableBody>
+  1008→              </Table>
+  1009→            </div>
+  1010→          </CardContent>
+  1011→        </Card>
+  1012→      </div>
+  1013→    </div>
+  1014→  );
+  1015→}
+  1016→
+  1017→/* ------------------------------------------------------------------ */
+  1018→/* Bookings Section                                                   */
+  1019→/* ------------------------------------------------------------------ */
+  1020→
+  1021→const STATUSES = ["ALL", "CONFIRMED", "COMPLETED", "CANCELLED", "REFUNDED", "PENDING"] as const;
+  1022→const TYPES = ["ALL", "EXPERIENCE", "HOTEL"] as const;
+  1023→
+  1024→function BookingsSection() {
+  1025→  const [bookings, setBookings] = useState<BookingT[]>([]);
+  1026→  const [loading, setLoading] = useState(true);
+  1027→  const [error, setError] = useState<string | null>(null);
+  1028→
+  1029→  const [q, setQ] = useState("");
+  1030→  const [status, setStatus] = useState<string>("ALL");
+  1031→  const [type, setType] = useState<string>("ALL");
+  1032→
+  1033→  const load = useCallback(async () => {
+  1034→    setLoading(true);
+  1035→    setError(null);
+  1036→    try {
+  1037→      const params = new URLSearchParams();
+  1038→      if (status !== "ALL") params.set("status", status);
+  1039→      if (type !== "ALL") params.set("type", type);
+  1040→      if (q.trim()) params.set("q", q.trim());
+  1041→      params.set("limit", "100");
+  1042→      const res = await fetch(`/api/admin/bookings?${params.toString()}`, {
+  1043→        cache: "no-store",
+  1044→      });
+  1045→      if (!res.ok) throw new Error("Failed to load bookings");
+  1046→      const data = (await res.json()) as { bookings: BookingT[] };
+  1047→      setBookings(data.bookings);
+  1048→    } catch (e) {
+  1049→      const msg = e instanceof Error ? e.message : "Unknown error";
+  1050→      setError(msg);
+  1051→      toast.error("Could not load bookings", { description: msg });
+  1052→    } finally {
+  1053→      setLoading(false);
+  1054→    }
+  1055→  }, [q, status, type]);
+  1056→
+  1057→  // Filter changes trigger an immediate fetch (search uses a separate
+  1058→  // debounced effect below). `load` is referenced intentionally without
+  1059→  // being listed in deps to avoid double-fetching on every keystroke.
+  1060→  useEffect(() => {
+  1061→    void load();
+  1062→  }, [status, type]);
+  1063→
+  1064→  // Debounced search
+  1065→  useEffect(() => {
+  1066→    const t = setTimeout(() => {
+  1067→      void load();
+  1068→    }, 350);
+  1069→    return () => clearTimeout(t);
+  1070→  }, [q]);
+  1071→
+  1072→  return (
+  1073→    <div className="space-y-6">
+  1074→      <SectionTitle
+  1075→        title="Bookings"
+  1076→        subtitle="Search, filter and review every reservation on the platform."
+  1077→        icon={CalendarCheck}
+  1078→        action={
+  1079→          <Button variant="outline" size="sm" onClick={load}>
+  1080→            <RefreshCw className="size-4" /> Refresh
+  1081→          </Button>
+  1082→        }
+  1083→      />
+  1084→
+  1085→      <Card className="rounded-xl">
+  1086→        <CardHeader>
+  1087→          <CardTitle className="text-base">Filters</CardTitle>
+  1088→          <CardDescription>
+  1089→            Refine by status, type or search by reference, name or email.
+  1090→          </CardDescription>
+  1091→        </CardHeader>
+  1092→        <CardContent>
+  1093→          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+  1094→            <div className="relative flex-1">
+  1095→              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+  1096→              <Input
+  1097→                placeholder="Search reference, name, email…"
+  1098→                value={q}
+  1099→                onChange={(e) => setQ(e.target.value)}
+  1100→                className="pl-9"
+  1101→              />
+  1102→            </div>
+  1103→            <Select value={status} onValueChange={setStatus}>
+  1104→              <SelectTrigger className="w-full sm:w-44">
+  1105→                <SelectValue placeholder="Status" />
+  1106→              </SelectTrigger>
+  1107→              <SelectContent>
+  1108→                {STATUSES.map((s) => (
+  1109→                  <SelectItem key={s} value={s}>
+  1110→                    {s === "ALL" ? "All statuses" : s}
+  1111→                  </SelectItem>
+  1112→                ))}
+  1113→              </SelectContent>
+  1114→            </Select>
+  1115→            <Select value={type} onValueChange={setType}>
+  1116→              <SelectTrigger className="w-full sm:w-44">
+  1117→                <SelectValue placeholder="Type" />
+  1118→              </SelectTrigger>
+  1119→              <SelectContent>
+  1120→                {TYPES.map((t) => (
+  1121→                  <SelectItem key={t} value={t}>
+  1122→                    {t === "ALL" ? "All types" : t}
+  1123→                  </SelectItem>
+  1124→                ))}
+  1125→              </SelectContent>
+  1126→            </Select>
+  1127→          </div>
+  1128→        </CardContent>
+  1129→      </Card>
+  1130→
+  1131→      <Card className="rounded-xl">
+  1132→        <CardHeader>
+  1133→          <div className="flex items-center justify-between">
+  1134→            <div>
+  1135→              <CardTitle className="text-base">All Bookings</CardTitle>
+  1136→              <CardDescription>
+  1137→                {loading
+  1138→                  ? "Loading…"
+  1139→                  : `${bookings.length} booking${bookings.length === 1 ? "" : "s"} found`}
+  1140→              </CardDescription>
+  1141→            </div>
+  1142→            <Badge variant="secondary">
+  1143→              {bookings.length} results
+  1144→            </Badge>
+  1145→          </div>
+  1146→        </CardHeader>
+  1147→        <CardContent className="px-0 sm:px-6">
+  1148→          {loading ? (
+  1149→            <div className="space-y-2 px-4 sm:px-0">
+  1150→              {Array.from({ length: 6 }).map((_, i) => (
+  1151→                <Skeleton key={i} className="h-12 w-full rounded-md" />
+  1152→              ))}
+  1153→            </div>
+  1154→          ) : error ? (
+  1155→            <ErrorState message={error} onRetry={load} />
+  1156→          ) : bookings.length === 0 ? (
+  1157→            <div className="flex flex-col items-center justify-center gap-2 py-12 text-center">
+  1158→              <CalendarCheck className="size-8 text-muted-foreground" />
+  1159→              <p className="font-medium text-foreground">No bookings found</p>
+  1160→              <p className="text-sm text-muted-foreground">
+  1161→                Try adjusting your filters or search query.
+  1162→              </p>
+  1163→            </div>
+  1164→          ) : (
+  1165→            <div className="max-h-[600px] overflow-y-auto">
+  1166→              <Table>
+  1167→                <TableHeader className="sticky top-0 z-10 bg-card">
+  1168→                  <TableRow>
+  1169→                    <TableHead className="pl-4 sm:pl-6">Reference</TableHead>
+  1170→                    <TableHead>Customer</TableHead>
+  1171→                    <TableHead>Type</TableHead>
+  1172→                    <TableHead className="min-w-[180px]">Item</TableHead>
+  1173→                    <TableHead>Check-in</TableHead>
+  1174→                    <TableHead>Guests / Nights</TableHead>
+  1175→                    <TableHead className="text-right">Total</TableHead>
+  1176→                    <TableHead>Status</TableHead>
+  1177→                    <TableHead>Payment</TableHead>
+  1178→                  </TableRow>
+  1179→                </TableHeader>
+  1180→                <TableBody>
+  1181→                  {bookings.map((b) => (
+  1182→                    <TableRow key={b.id}>
+  1183→                      <TableCell className="pl-4 sm:pl-6 font-mono text-xs font-semibold text-primary">
+  1184→                        {b.reference}
+  1185→                      </TableCell>
+  1186→                      <TableCell>
+  1187→                        <div className="flex flex-col">
+  1188→                          <span className="font-medium text-foreground">
+  1189→                            {b.customerName}
+  1190→                          </span>
+  1191→                          <span className="text-xs text-muted-foreground">
+  1192→                            {b.customerEmail}
+  1193→                          </span>
+  1194→                        </div>
+  1195→                      </TableCell>
+  1196→                      <TableCell>
+  1197→                        <Badge
+  1198→                          variant="outline"
+  1199→                          className={
+  1200→                            b.type === "EXPERIENCE"
+  1201→                              ? "border-gold/30 text-gold-foreground"
+  1202→                              : "border-primary/30 text-primary"
+  1203→                          }
+  1204→                        >
+  1205→                          {b.type === "EXPERIENCE" ? (
+  1206→                            <Plane className="size-3" />
+  1207→                          ) : (
+  1208→                            <HotelIcon className="size-3" />
+  1209→                          )}
+  1210→                          {b.type}
+  1211→                        </Badge>
+  1212→                      </TableCell>
+  1213→                      <TableCell className="min-w-[180px]">
+  1214→                        <div className="flex flex-col">
+  1215→                          <span className="max-w-[200px] truncate font-medium text-foreground">
+  1216→                            {bookingItemTitle(b)}
+  1217→                          </span>
+  1218→                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+  1219→                            <MapPin className="size-3" />
+  1220→                            {bookingDestination(b)}
+  1221→                          </span>
+  1222→                        </div>
+  1223→                      </TableCell>
+  1224→                      <TableCell className="text-sm">
+  1225→                        {fmtDate(b.checkInDate)}
+  1226→                      </TableCell>
+  1227→                      <TableCell className="text-sm">
+  1228→                        <span className="text-foreground">{b.guests}</span>
+  1229→                        <span className="text-muted-foreground"> guests</span>
+  1230→                        {b.nights > 0 && (
+  1231→                          <>
+  1232→                            <span className="text-muted-foreground"> · </span>
+  1233→                            <span className="text-foreground">{b.nights}</span>
+  1234→                            <span className="text-muted-foreground"> nights</span>
+  1235→                          </>
+  1236→                        )}
+  1237→                      </TableCell>
+  1238→                      <TableCell className="text-right font-semibold">
+  1239→                        {moneyDetailed.format(b.totalAmount)}
+  1240→                      </TableCell>
+  1241→                      <TableCell>
+  1242→                        <StatusBadge status={b.status} />
+  1243→                      </TableCell>
+  1244→                      <TableCell>
+  1245→                        <PaymentBadge status={b.paymentStatus} />
+  1246→                      </TableCell>
+  1247→                    </TableRow>
+  1248→                  ))}
+  1249→                </TableBody>
+  1250→              </Table>
+  1251→            </div>
+  1252→          )}
+  1253→        </CardContent>
+  1254→      </Card>
+  1255→    </div>
+  1256→  );
+  1257→}
+  1258→
+  1259→/* ------------------------------------------------------------------ */
+  1260→/* Catalog Section                                                    */
+  1261→/* ------------------------------------------------------------------ */
+  1262→
+  1263→function CatalogSection() {
+  1264→  return (
+  1265→    <div className="space-y-6">
+  1266→      <SectionTitle
+  1267→        title="Catalog"
+  1268→        subtitle="Add, edit and remove experiences, hotels and destinations — no code required."
+  1269→        icon={BookOpen}
+  1270→      />
+  1271→      <CatalogManager />
+  1272→    </div>
+  1273→  );
+  1274→}
+  1275→
+  1276→function ExperiencesTable() {
+  1277→  const [items, setItems] = useState<ExperienceT[]>([]);
+  1278→  const [loading, setLoading] = useState(true);
+  1279→  const [error, setError] = useState<string | null>(null);
+  1280→
+  1281→  const load = useCallback(async () => {
+  1282→    setLoading(true);
+  1283→    setError(null);
+  1284→    try {
+  1285→      const res = await fetch("/api/experiences?limit=0", { cache: "no-store" });
+  1286→      if (!res.ok) throw new Error("Failed to load experiences");
+  1287→      const data = (await res.json()) as { experiences: ExperienceT[] };
+  1288→      setItems(data.experiences);
+  1289→    } catch (e) {
+  1290→      const msg = e instanceof Error ? e.message : "Unknown error";
+  1291→      setError(msg);
+  1292→      toast.error("Could not load experiences", { description: msg });
+  1293→    } finally {
+  1294→      setLoading(false);
+  1295→    }
+  1296→  }, []);
+  1297→
+  1298→  useEffect(() => {
+  1299→    void load();
+  1300→  }, [load]);
+  1301→
+  1302→  return (
+  1303→    <Card className="rounded-xl">
+  1304→      <CardHeader>
+  1305→        <div className="flex items-center justify-between">
+  1306→          <div>
+  1307→            <CardTitle className="text-base">Experiences</CardTitle>
+  1308→            <CardDescription>
+  1309→              {loading ? "Loading…" : `${items.length} experiences live`}
+  1310→            </CardDescription>
+  1311→          </div>
+  1312→          <Button variant="outline" size="sm" onClick={load}>
+  1313→            <RefreshCw className="size-4" /> Refresh
+  1314→          </Button>
+  1315→        </div>
+  1316→      </CardHeader>
+  1317→      <CardContent className="px-0 sm:px-6">
+  1318→        {loading ? (
+  1319→          <div className="space-y-2 px-4 sm:px-0">
+  1320→            {Array.from({ length: 6 }).map((_, i) => (
+  1321→              <Skeleton key={i} className="h-12 w-full rounded-md" />
+  1322→            ))}
+  1323→          </div>
+  1324→        ) : error ? (
+  1325→          <ErrorState message={error} onRetry={load} />
+  1326→        ) : (
+  1327→          <div className="max-h-[600px] overflow-y-auto">
+  1328→            <Table>
+  1329→              <TableHeader className="sticky top-0 z-10 bg-card">
+  1330→                <TableRow>
+  1331→                  <TableHead className="pl-4 sm:pl-6">Experience</TableHead>
+  1332→                  <TableHead>Destination</TableHead>
+  1333→                  <TableHead>Type</TableHead>
+  1334→                  <TableHead className="text-right">Price</TableHead>
+  1335→                  <TableHead>Rating</TableHead>
+  1336→                  <TableHead className="text-right">Reviews</TableHead>
+  1337→                  <TableHead className="text-right">Booked</TableHead>
+  1338→                  <TableHead className="text-right pr-4 sm:pr-6">Avail.</TableHead>
+  1339→                </TableRow>
+  1340→              </TableHeader>
+  1341→              <TableBody>
+  1342→                {items.map((e) => (
+  1343→                  <TableRow key={e.id}>
+  1344→                    <TableCell className="pl-4 sm:pl-6">
+  1345→                      <div className="flex flex-col">
+  1346→                        <span className="max-w-[260px] truncate font-medium text-foreground">
+  1347→                          {e.title}
+  1348→                        </span>
+  1349→                        <span className="text-xs text-muted-foreground">
+  1350→                          {e.duration} · {e.vendorName}
+  1351→                        </span>
+  1352→                      </div>
+  1353→                    </TableCell>
+  1354→                    <TableCell className="text-sm">
+  1355→                      <span className="flex items-center gap-1">
+  1356→                        <MapPin className="size-3 text-muted-foreground" />
+  1357→                        {e.destination?.name ?? "—"}
+  1358→                      </span>
+  1359→                    </TableCell>
+  1360→                    <TableCell>
+  1361→                      <Badge variant="outline" className="border-gold/30 text-gold-foreground">
+  1362→                        {e.type}
+  1363→                      </Badge>
+  1364→                    </TableCell>
+  1365→                    <TableCell className="text-right">
+  1366→                      <span className="font-semibold text-foreground">
+  1367→                        {money.format(e.price)}
+  1368→                      </span>
+  1369→                      {e.originalPrice && e.originalPrice > e.price && (
+  1370→                        <span className="ml-1 text-xs text-muted-foreground line-through">
+  1371→                          {money.format(e.originalPrice)}
+  1372→                        </span>
+  1373→                      )}
+  1374→                    </TableCell>
+  1375→                    <TableCell>
+  1376→                      <span className="flex items-center gap-1 text-sm font-medium">
+  1377→                        <Star className="size-3.5 fill-gold text-gold" />
+  1378→                        {e.rating.toFixed(1)}
+  1379→                      </span>
+  1380→                    </TableCell>
+  1381→                    <TableCell className="text-right text-sm text-muted-foreground">
+  1382→                      {compactNumber.format(e.reviewCount)}
+  1383→                    </TableCell>
+  1384→                    <TableCell className="text-right text-sm font-semibold text-primary">
+  1385→                      {compactNumber.format(e.bookedCount)}
+  1386→                    </TableCell>
+  1387→                    <TableCell className="text-right pr-4 sm:pr-6 text-sm text-muted-foreground">
+  1388→                      {e.availability}
+  1389→                    </TableCell>
+  1390→                  </TableRow>
+  1391→                ))}
+  1392→              </TableBody>
+  1393→            </Table>
+  1394→          </div>
+  1395→        )}
+  1396→      </CardContent>
+  1397→    </Card>
+  1398→  );
+  1399→}
+  1400→
+  1401→function HotelsTable() {
+  1402→  const [items, setItems] = useState<HotelT[]>([]);
+  1403→  const [loading, setLoading] = useState(true);
+  1404→  const [error, setError] = useState<string | null>(null);
+  1405→
+  1406→  const load = useCallback(async () => {
+  1407→    setLoading(true);
+  1408→    setError(null);
+  1409→    try {
+  1410→      const res = await fetch("/api/hotels?limit=0", { cache: "no-store" });
+  1411→      if (!res.ok) throw new Error("Failed to load hotels");
+  1412→      const data = (await res.json()) as { hotels: HotelT[] };
+  1413→      setItems(data.hotels);
+  1414→    } catch (e) {
+  1415→      const msg = e instanceof Error ? e.message : "Unknown error";
+  1416→      setError(msg);
+  1417→      toast.error("Could not load hotels", { description: msg });
+  1418→    } finally {
+  1419→      setLoading(false);
+  1420→    }
+  1421→  }, []);
+  1422→
+  1423→  useEffect(() => {
+  1424→    void load();
+  1425→  }, [load]);
+  1426→
+  1427→  return (
+  1428→    <Card className="rounded-xl">
+  1429→      <CardHeader>
+  1430→        <div className="flex items-center justify-between">
+  1431→          <div>
+  1432→            <CardTitle className="text-base">Hotels</CardTitle>
+  1433→            <CardDescription>
+  1434→              {loading ? "Loading…" : `${items.length} hotels live`}
+  1435→            </CardDescription>
+  1436→          </div>
+  1437→          <Button variant="outline" size="sm" onClick={load}>
+  1438→            <RefreshCw className="size-4" /> Refresh
+  1439→          </Button>
+  1440→        </div>
+  1441→      </CardHeader>
+  1442→      <CardContent className="px-0 sm:px-6">
+  1443→        {loading ? (
+  1444→          <div className="space-y-2 px-4 sm:px-0">
+  1445→            {Array.from({ length: 6 }).map((_, i) => (
+  1446→              <Skeleton key={i} className="h-12 w-full rounded-md" />
+  1447→            ))}
+  1448→          </div>
+  1449→        ) : error ? (
+  1450→          <ErrorState message={error} onRetry={load} />
+  1451→        ) : (
+  1452→          <div className="max-h-[600px] overflow-y-auto">
+  1453→            <Table>
+  1454→              <TableHeader className="sticky top-0 z-10 bg-card">
+  1455→                <TableRow>
+  1456→                  <TableHead className="pl-4 sm:pl-6">Hotel</TableHead>
+  1457→                  <TableHead>Destination</TableHead>
+  1458→                  <TableHead>Stars</TableHead>
+  1459→                  <TableHead className="text-right">Price / night</TableHead>
+  1460→                  <TableHead>Rating</TableHead>
+  1461→                  <TableHead className="text-right">Reviews</TableHead>
+  1462→                  <TableHead className="text-right pr-4 sm:pr-6">Rooms</TableHead>
+  1463→                </TableRow>
+  1464→              </TableHeader>
+  1465→              <TableBody>
+  1466→                {items.map((h) => (
+  1467→                  <TableRow key={h.id}>
+  1468→                    <TableCell className="pl-4 sm:pl-6">
+  1469→                      <div className="flex flex-col">
+  1470→                        <span className="max-w-[260px] truncate font-medium text-foreground">
+  1471→                          {h.name}
+  1472→                        </span>
+  1473→                        <span className="text-xs text-muted-foreground">
+  1474→                          {h.roomTypes.length} room type
+  1475→                          {h.roomTypes.length === 1 ? "" : "s"}
+  1476→                        </span>
+  1477→                      </div>
+  1478→                    </TableCell>
+  1479→                    <TableCell className="text-sm">
+  1480→                      <span className="flex items-center gap-1">
+  1481→                        <MapPin className="size-3 text-muted-foreground" />
+  1482→                        {h.destination?.name ?? "—"}
+  1483→                      </span>
+  1484→                    </TableCell>
+  1485→                    <TableCell>
+  1486→                      <span className="flex items-center gap-0.5 text-gold">
+  1487→                        {Array.from({ length: h.starRating }).map((_, i) => (
+  1488→                          <Star key={i} className="size-3 fill-current" />
+  1489→                        ))}
+  1490→                      </span>
+  1491→                    </TableCell>
+  1492→                    <TableCell className="text-right">
+  1493→                      <span className="font-semibold text-foreground">
+  1494→                        {money.format(h.pricePerNight)}
+  1495→                      </span>
+  1496→                      {h.originalPrice && h.originalPrice > h.pricePerNight && (
+  1497→                        <span className="ml-1 text-xs text-muted-foreground line-through">
+  1498→                          {money.format(h.originalPrice)}
+  1499→                        </span>
+  1500→                      )}
+  1501→                    </TableCell>
+  1502→                    <TableCell>
+  1503→                      <span className="flex items-center gap-1 text-sm font-medium">
+  1504→                        <Star className="size-3.5 fill-gold text-gold" />
+  1505→                        {h.rating.toFixed(1)}
+  1506→                      </span>
+  1507→                    </TableCell>
+  1508→                    <TableCell className="text-right text-sm text-muted-foreground">
+  1509→                      {compactNumber.format(h.reviewCount)}
+  1510→                    </TableCell>
+  1511→                    <TableCell className="text-right pr-4 sm:pr-6 text-sm text-muted-foreground">
+  1512→                      {h.roomTypes.length}
+  1513→                    </TableCell>
+  1514→                  </TableRow>
+  1515→                ))}
+  1516→              </TableBody>
+  1517→            </Table>
+  1518→          </div>
+  1519→        )}
+  1520→      </CardContent>
+  1521→    </Card>
+  1522→  );
+  1523→}
+  1524→
+  1525→/* ------------------------------------------------------------------ */
+  1526→/* Analytics Section                                                  */
+  1527→/* ------------------------------------------------------------------ */
+  1528→
+  1529→function AnalyticsSection() {
+  1530→  const [stats, setStats] = useState<AdminStats | null>(null);
+  1531→  const [bookings, setBookings] = useState<BookingT[]>([]);
+  1532→  const [loading, setLoading] = useState(true);
+  1533→  const [error, setError] = useState<string | null>(null);
+  1534→
+  1535→  const load = useCallback(async () => {
+  1536→    setLoading(true);
+  1537→    setError(null);
+  1538→    try {
+  1539→      const [statsRes, bookingsRes] = await Promise.all([
+  1540→        fetch("/api/admin/stats", { cache: "no-store" }),
+  1541→        fetch("/api/admin/bookings?limit=100", { cache: "no-store" }),
+  1542→      ]);
+  1543→      if (!statsRes.ok || !bookingsRes.ok) throw new Error("Failed to load analytics");
+  1544→      const statsData = (await statsRes.json()) as AdminStats;
+  1545→      const bookingsData = (await bookingsRes.json()) as { bookings: BookingT[] };
+  1546→      setStats(statsData);
+  1547→      setBookings(bookingsData.bookings);
+  1548→    } catch (e) {
+  1549→      const msg = e instanceof Error ? e.message : "Unknown error";
+  1550→      setError(msg);
+  1551→      toast.error("Could not load analytics", { description: msg });
+  1552→    } finally {
+  1553→      setLoading(false);
+  1554→    }
+  1555→  }, []);
+  1556→
+  1557→  useEffect(() => {
+  1558→    void load();
+  1559→  }, [load]);
+  1560→
+  1561→  // Top destinations derived from bookings
+  1562→  const topDestinations = useMemo(() => {
+  1563→    const map = new Map<string, { count: number; revenue: number }>();
+  1564→    for (const b of bookings) {
+  1565→      const dest = bookingDestination(b);
+  1566→      if (!dest || dest === "—") continue;
+  1567→      const cur = map.get(dest) ?? { count: 0, revenue: 0 };
+  1568→      cur.count += 1;
+  1569→      cur.revenue += b.status !== "CANCELLED" ? b.totalAmount : 0;
+  1570→      map.set(dest, cur);
+  1571→    }
+  1572→    return Array.from(map.entries())
+  1573→      .map(([name, v]) => ({ name, ...v }))
+  1574→      .sort((a, b) => b.revenue - a.revenue)
+  1575→      .slice(0, 6);
+  1576→  }, [bookings]);
+  1577→
+  1578→  if (loading) {
+  1579→    return (
+  1580→      <div className="space-y-6">
+  1581→        <SectionTitle
+  1582→          title="Analytics"
+  1583→          subtitle="Deep dive into revenue, status and destination performance."
+  1584→          icon={BarChart3}
+  1585→        />
+  1586→        <Skeleton className="h-96 rounded-xl" />
+  1587→        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+  1588→          <Skeleton className="h-72 rounded-xl" />
+  1589→          <Skeleton className="h-72 rounded-xl" />
+  1590→        </div>
+  1591→      </div>
+  1592→    );
+  1593→  }
+  1594→
+  1595→  if (error || !stats) {
+  1596→    return (
+  1597→      <div className="space-y-6">
+  1598→        <SectionTitle
+  1599→          title="Analytics"
+  1600→          subtitle="Deep dive into revenue, status and destination performance."
+  1601→          icon={BarChart3}
+  1602→        />
+  1603→        <ErrorState message={error ?? "No data available"} onRetry={load} />
+  1604→      </div>
+  1605→    );
+  1606→  }
+  1607→
+  1608→  const totalRev = stats.revenueByType.EXPERIENCE + stats.revenueByType.HOTEL || stats.kpis.revenue;
+  1609→  const maxDestRevenue = Math.max(1, ...topDestinations.map((d) => d.revenue));
+  1610→
+  1611→  return (
+  1612→    <div className="space-y-6">
+  1613→      <SectionTitle
+  1614→        title="Analytics"
+  1615→        subtitle="Deep dive into revenue, status and destination performance."
+  1616→        icon={BarChart3}
+  1617→        action={
+  1618→          <Button variant="outline" size="sm" onClick={load}>
+  1619→            <RefreshCw className="size-4" /> Refresh
+  1620→          </Button>
+  1621→        }
+  1622→      />
+  1623→
+  1624→      {/* Headline stats */}
+  1625→      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+  1626→        <MiniStat
+  1627→          label="Net Revenue"
+  1628→          value={money.format(stats.kpis.revenue)}
+  1629→          icon={DollarSign}
+  1630→          accent="gold"
+  1631→        />
+  1632→        <MiniStat
+  1633→          label="Bookings"
+  1634→          value={compactNumber.format(stats.kpis.totalBookings)}
+  1635→          icon={CalendarCheck}
+  1636→        />
+  1637→        <MiniStat
+  1638→          label="Avg Order"
+  1639→          value={money.format(stats.kpis.avgOrderValue)}
+  1640→          icon={Wallet}
+  1641→        />
+  1642→        <MiniStat
+  1643→          label="Refunded"
+  1644→          value={money.format(stats.kpis.refunded)}
+  1645→          icon={RotateCcw}
+  1646→          tone="muted"
+  1647→        />
+  1648→      </div>
+  1649→
+  1650→      {/* Bigger revenue trend */}
+  1651→      <Card className="rounded-xl">
+  1652→        <CardHeader>
+  1653→          <div className="flex items-center justify-between">
+  1654→            <div>
+  1655→              <CardTitle className="text-base">Revenue — Last 7 Days</CardTitle>
+  1656→              <CardDescription>
+  1657→                Daily revenue across all confirmed and completed bookings
+  1658→              </CardDescription>
+  1659→            </div>
+  1660→            <Badge variant="outline" className="border-gold/30 text-gold-foreground">
+  1661→              <Activity className="size-3" /> Trending
+  1662→            </Badge>
+  1663→          </div>
+  1664→        </CardHeader>
+  1665→        <CardContent>
+  1666→          <RevenueBarChart data={stats.revenueTrend} height={280} />
+  1667→        </CardContent>
+  1668→      </Card>
+  1669→
+  1670→      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+  1671→        {/* Revenue by type donut */}
+  1672→        <Card className="rounded-xl">
+  1673→          <CardHeader>
+  1674→            <CardTitle className="text-base">Revenue by Type</CardTitle>
+  1675→            <CardDescription>Experiences vs Hotels share</CardDescription>
+  1676→          </CardHeader>
+  1677→          <CardContent>
+  1678→            <RevenueDonut
+  1679→              experience={stats.revenueByType.EXPERIENCE}
+  1680→              hotel={stats.revenueByType.HOTEL}
+  1681→            />
+  1682→            <Separator className="my-4" />
+  1683→            <div className="flex items-center justify-between text-sm">
+  1684→              <span className="text-muted-foreground">Combined total</span>
+  1685→              <span
+  1686→                className="font-bold gold-text"
+  1687→                style={{ fontFamily: "var(--font-display)" }}
+  1688→              >
+  1689→                {money.format(totalRev)}
+  1690→              </span>
+  1691→            </div>
+  1692→          </CardContent>
+  1693→        </Card>
+  1694→
+  1695→        {/* Status breakdown */}
+  1696→        <Card className="rounded-xl">
+  1697→          <CardHeader>
+  1698→            <CardTitle className="text-base">Status Breakdown</CardTitle>
+  1699→            <CardDescription>
+  1700→              Distribution of all {stats.kpis.totalBookings} bookings
+  1701→            </CardDescription>
+  1702→          </CardHeader>
+  1703→          <CardContent className="space-y-4">
+  1704→            <StatusStackedBar breakdown={stats.statusBreakdown} />
+  1705→            <Separator />
+  1706→            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+  1707→              <StatusMini
+  1708→                icon={CheckCircle2}
+  1709→                label="Confirmed"
+  1710→                value={stats.statusBreakdown.CONFIRMED}
+  1711→                tone="primary"
+  1712→              />
+  1713→              <StatusMini
+  1714→                icon={CheckCircle2}
+  1715→                label="Completed"
+  1716→                value={stats.statusBreakdown.COMPLETED}
+  1717→                tone="emerald"
+  1718→              />
+  1719→              <StatusMini
+  1720→                icon={Clock}
+  1721→                label="Pending"
+  1722→                value={stats.statusBreakdown.PENDING}
+  1723→                tone="muted"
+  1724→              />
+  1725→              <StatusMini
+  1726→                icon={XCircle}
+  1727→                label="Cancelled"
+  1728→                value={stats.statusBreakdown.CANCELLED}
+  1729→                tone="destructive"
+  1730→              />
+  1731→              <StatusMini
+  1732→                icon={RotateCcw}
+  1733→                label="Refunded"
+  1734→                value={stats.statusBreakdown.REFUNDED}
+  1735→                tone="amber"
+  1736→              />
+  1737→            </div>
+  1738→          </CardContent>
+  1739→        </Card>
+  1740→      </div>
+  1741→
+  1742→      {/* Top destinations */}
+  1743→      <Card className="rounded-xl">
+  1744→        <CardHeader>
+  1745→          <div className="flex items-center justify-between">
+  1746→            <div>
+  1747→              <CardTitle className="text-base">Top Destinations</CardTitle>
+  1748→              <CardDescription>
+  1749→                By revenue · derived from latest 100 bookings
+  1750→              </CardDescription>
+  1751→            </div>
+  1752→            <Badge variant="secondary">
+  1753→              {topDestinations.length} destinations
+  1754→            </Badge>
+  1755→          </div>
+  1756→        </CardHeader>
+  1757→        <CardContent className="space-y-3">
+  1758→          {topDestinations.length === 0 ? (
+  1759→            <p className="py-6 text-center text-sm text-muted-foreground">
+  1760→              No destination data available yet.
+  1761→            </p>
+  1762→          ) : (
+  1763→            topDestinations.map((d, i) => (
+  1764→              <div key={d.name} className="flex items-center gap-3">
+  1765→                <div
+  1766→                  className={cn(
+  1767→                    "flex size-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold",
+  1768→                    i === 0
+  1769→                      ? "bg-gold text-gold-foreground"
+  1770→                      : "bg-primary/10 text-primary",
+  1771→                  )}
+  1772→                >
+  1773→                  {i + 1}
+  1774→                </div>
+  1775→                <div className="min-w-0 flex-1">
+  1776→                  <div className="mb-1 flex items-center justify-between text-sm">
+  1777→                    <span className="flex items-center gap-1.5 font-medium text-foreground">
+  1778→                      <MapPin className="size-3.5 text-muted-foreground" />
+  1779→                      {d.name}
+  1780→                    </span>
+  1781→                    <span className="font-semibold text-foreground">
+  1782→                      {money.format(d.revenue)}
+  1783→                    </span>
+  1784→                  </div>
+  1785→                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+  1786→                    <div
+  1787→                      className="gold-gradient h-full rounded-full transition-all"
+  1788→                      style={{
+  1789→                        width: `${(d.revenue / maxDestRevenue) * 100}%`,
+  1790→                      }}
+  1791→                    />
+  1792→                  </div>
+  1793→                  <div className="mt-0.5 text-xs text-muted-foreground">
+  1794→                    {d.count} booking{d.count === 1 ? "" : "s"}
+  1795→                  </div>
+  1796→                </div>
+  1797→              </div>
+  1798→            ))
+  1799→          )}
+  1800→        </CardContent>
+  1801→      </Card>
+  1802→    </div>
+  1803→  );
+  1804→}
+  1805→
+  1806→function MiniStat({
+  1807→  label,
+  1808→  value,
+  1809→  icon: Icon,
+  1810→  accent = "default",
+  1811→  tone = "default",
+  1812→}: {
+  1813→  label: string;
+  1814→  value: string;
+  1815→  icon: React.ComponentType<{ className?: string }>;
+  1816→  accent?: "default" | "gold";
+  1817→  tone?: "default" | "muted";
+  1818→}) {
+  1819→  return (
+  1820→    <Card className="rounded-xl">
+  1821→      <CardContent className="flex items-center gap-3">
+  1822→        <div
+  1823→          className={cn(
+  1824→            "flex size-10 shrink-0 items-center justify-center rounded-lg",
+  1825→            accent === "gold"
+  1826→              ? "bg-gold/15 text-gold"
+  1827→              : tone === "muted"
+  1828→                ? "bg-muted text-muted-foreground"
+  1829→                : "bg-primary/10 text-primary",
+  1830→          )}
+  1831→        >
+  1832→          <Icon className="size-5" />
+  1833→        </div>
+  1834→        <div className="min-w-0">
+  1835→          <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+  1836→            {label}
+  1837→          </div>
+  1838→          <div
+  1839→            className={cn(
+  1840→              "truncate text-lg font-bold tracking-tight sm:text-xl",
+  1841→              accent === "gold" && "gold-text",
+  1842→            )}
+  1843→            style={{ fontFamily: "var(--font-display)" }}
+  1844→          >
+  1845→            {value}
+  1846→          </div>
+  1847→        </div>
+  1848→      </CardContent>
+  1849→    </Card>
+  1850→  );
+  1851→}
+  1852→
+  1853→function StatusMini({
+  1854→  icon: Icon,
+  1855→  label,
+  1856→  value,
+  1857→  tone,
+  1858→}: {
+  1859→  icon: React.ComponentType<{ className?: string }>;
+  1860→  label: string;
+  1861→  value: number;
+  1862→  tone: "primary" | "emerald" | "destructive" | "amber" | "muted";
+  1863→}) {
+  1864→  const toneClass = {
+  1865→    primary: "bg-primary/10 text-primary",
+  1866→    emerald: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  1867→    destructive: "bg-destructive/10 text-destructive",
+  1868→    amber: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  1869→    muted: "bg-muted text-muted-foreground",
+  1870→  }[tone];
+  1871→  return (
+  1872→    <div className="flex items-center gap-2 rounded-lg border border-border/60 p-2.5">
+  1873→      <div
+  1874→        className={cn(
+  1875→          "flex size-8 shrink-0 items-center justify-center rounded-md",
+  1876→          toneClass,
+  1877→        )}
+  1878→      >
+  1879→        <Icon className="size-4" />
+  1880→      </div>
+  1881→      <div className="min-w-0">
+  1882→        <div className="text-[11px] text-muted-foreground">{label}</div>
+  1883→        <div className="text-sm font-bold text-foreground">{value}</div>
+  1884→      </div>
+  1885→    </div>
+  1886→  );
+  1887→}
+  1888→
+  1889→/* ------------------------------------------------------------------ */
+  1890→/* AI Insights Section                                                */
+  1891→/* ------------------------------------------------------------------ */
+  1892→
+  1893→const STATIC_PRICE_PREDICTIONS = [
+  1894→  {
+  1895→    title: "Dubai Hot Air Balloon",
+  1896→    destination: "Dubai, UAE",
+  1897→    signal: "Demand rising",
+  1898→    detail:
+  1899→      "Bookings up 38% week-over-week. Consider raising price by 8–12% over the next 14 days.",
+  1900→    trend: "up" as const,
+  1901→    confidence: 87,
+  1902→  },
+  1903→  {
+  1904→    title: "Maldives Overwater Villa",
+  1905→    destination: "Maldives",
+  1906→    signal: "Stable — high margin",
+  1907→    detail:
+  1908→      "Consistent luxury demand. Maintain current pricing; bundle with a sunset cruise to lift AOV.",
+  1909→    trend: "flat" as const,
+  1910→    confidence: 74,
+  1911→  },
+  1912→  {
+  1913→    title: "Santorini Caldera Cruise",
+  1914→    destination: "Santorini, Greece",
+  1915→    signal: "Cooling slightly",
+  1916→    detail:
+  1917→      "3 cancellations this week. Offer a 10% early-bird discount for bookings 30+ days out.",
+  1918→    trend: "down" as const,
+  1919→    confidence: 62,
+  1920→  },
+  1921→];
+  1922→
+  1923→function AIInsightsSection() {
+  1924→  const [stats, setStats] = useState<AdminStats | null>(null);
+  1925→  const [reply, setReply] = useState<string | null>(null);
+  1926→  const [loadingStats, setLoadingStats] = useState(true);
+  1927→  const [loadingAI, setLoadingAI] = useState(false);
+  1928→  const [aiError, setAIError] = useState<string | null>(null);
+  1929→
+  1930→  const loadStats = useCallback(async () => {
+  1931→    setLoadingStats(true);
+  1932→    try {
+  1933→      const res = await fetch("/api/admin/stats", { cache: "no-store" });
+  1934→      if (!res.ok) throw new Error("Failed to load stats");
+  1935→      const data = (await res.json()) as AdminStats;
+  1936→      setStats(data);
+  1937→    } catch (e) {
+  1938→      const msg = e instanceof Error ? e.message : "Unknown error";
+  1939→      toast.error("Could not load KPIs for AI context", { description: msg });
+  1940→    } finally {
+  1941→      setLoadingStats(false);
+  1942→    }
+  1943→  }, []);
+  1944→
+  1945→  const generateInsights = useCallback(async () => {
+  1946→    if (!stats) {
+  1947→      toast.error("KPIs not loaded yet — please wait.");
+  1948→      return;
+  1949→    }
+  1950→    setLoadingAI(true);
+  1951→    setAIError(null);
+  1952→    setReply(null);
+  1953→    try {
+  1954→      const k = stats.kpis;
+  1955→      const prompt = `You are the Wanderlust AI business analyst reviewing the admin dashboard. Here is the current snapshot:
+  1956→
+  1957→- Total revenue: ${money.format(k.revenue)} (refunded: ${money.format(k.refunded)})
+  1958→- Total bookings: ${k.totalBookings}
+  1959→- Average order value: ${money.format(k.avgOrderValue)}
+  1960→- Active users: ${k.totalUsers}
+  1961→- Catalog: ${k.totalExperiences} experiences, ${k.totalHotels} hotels across ${k.totalDestinations} destinations
+  1962→- Reviews collected: ${k.totalReviews}
+  1963→- Revenue by type: Experiences ${money.format(stats.revenueByType.EXPERIENCE)} (${((stats.revenueByType.EXPERIENCE / Math.max(1, stats.revenueByType.EXPERIENCE + stats.revenueByType.HOTEL)) * 100).toFixed(0)}%), Hotels ${money.format(stats.revenueByType.HOTEL)} (${((stats.revenueByType.HOTEL / Math.max(1, stats.revenueByType.EXPERIENCE + stats.revenueByType.HOTEL)) * 100).toFixed(0)}%)
+  1964→- Status breakdown: Confirmed ${stats.statusBreakdown.CONFIRMED}, Completed ${stats.statusBreakdown.COMPLETED}, Cancelled ${stats.statusBreakdown.CANCELLED}, Refunded ${stats.statusBreakdown.REFUNDED}, Pending ${stats.statusBreakdown.PENDING}
+  1965→- Last 7 days revenue trend: ${stats.revenueTrend.map((d) => `${d.date.slice(5)}: ${money.format(d.revenue)} (${d.bookings} bookings)`).join("; ")}
+  1966→
+  1967→Based on this data, provide:
+  1968→1. Exactly 3 to 4 actionable business insights (each a short bullet with a clear recommendation).
+  1969→2. One notable trend worth watching (a single short paragraph).
+  1970→
+  1971→Be specific, quantitative where possible, and concise. Use clean markdown bullets.`;
+  1972→
+  1973→      const res = await fetch("/api/ai/chat", {
+  1974→        method: "POST",
+  1975→        headers: { "Content-Type": "application/json" },
+  1976→        body: JSON.stringify({
+  1977→          messages: [{ role: "user", content: prompt }],
+  1978→        }),
+  1979→      });
+  1980→      if (!res.ok) {
+  1981→        const body = await res.json().catch(() => ({}));
+  1982→        throw new Error(body.error || `AI request failed (${res.status})`);
+  1983→      }
+  1984→      const data = (await res.json()) as { reply: string };
+  1985→      setReply(data.reply || "No insights were returned.");
+  1986→    } catch (e) {
+  1987→      const msg = e instanceof Error ? e.message : "Unknown error";
+  1988→      setAIError(msg);
+  1989→      toast.error("AI insights unavailable", { description: msg });
+  1990→    } finally {
+  1991→      setLoadingAI(false);
+  1992→    }
+  1993→  }, [stats]);
+  1994→
+  1995→  useEffect(() => {
+  1996→    void loadStats();
+  1997→  }, [loadStats]);
+  1998→
+  1999→  // Auto-generate once stats are ready
+  2000→  useEffect(() => {
+
+[showing lines 1-2000 of 2349; use offset=2001 with limit to continue reading]
