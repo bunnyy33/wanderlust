@@ -334,3 +334,59 @@ Stage Summary:
 - Files modified (5): prisma/schema.prisma (sqlite provider + 6 fraud fields on Reservation), src/lib/agency-types.ts (ReservationT + ReservationListItemT + 2 serializers updated), src/app/api/agency/reservations/route.ts (genFraudData + POST seeds fraud), src/app/api/agency/reservations/[id]/route.ts (PATCH method added + PUT extended for fraud fields), src/components/site/agency-dashboard.tsx (KPI cards, BookingVerificationDialog, eye=dialog, open=page+PATCH).
 - `bun run db:push` succeeded (sqlite). `bun run lint` → 0 errors, 0 warnings. dev.log shows `✓ Compiled in 348ms` after edits. Backfill + 14 demo reservations seeded (12 normal + 2 high-risk flagged).
 - The agency dashboard now matches the JTR/Rayna layout exactly: KPI cards (4) → filter bar → booking table → eye-dialog (fraud verification, manual review) vs Open button (page navigation + auto-status-flip to "In Process"). Reservation Detail page is unchanged in structure (Sections A/B/C with all service tabs).
+
+---
+Task ID: AGENCY-FULL-REBUILD
+Agent: main
+Task: Rebuild the entire agency CRM (backend + frontend) after a sandbox rollback wiped out all session work. The user's requests: collapsible hover sidebar, dark mode, email format matching their screenshot, voucher/invoice generation, visible Bookings button, all tabs editable.
+
+Work Log:
+- DIAGNOSIS: Sandbox was restored to commit 44ba14e, wiping ALL session work (agency frontend, API routes for flights/visas/extras/email/voucher/invoice, serializers, pricing helpers, resilient queries, sync-provider script). Only the schema (FlightBooking/VisaBooking/ExtraBooking models) survived because it was re-added before the rollback.
+- BACKEND REBUILD: Rebuilt all 21 API routes from scratch:
+  • src/lib/agency-queries.ts — resilient query helpers (try FULL_INCLUDE, fallback to SAFE_INCLUDE on P2021, backfill flights/visas/extras to [])
+  • src/lib/agency-recalc.ts — updated to use resilient fetch
+  • src/app/api/agency/reservations/[id]/route.ts — GET/PUT/PATCH/DELETE using resilient queries
+  • src/app/api/agency/reservations/route.ts — GET list + POST create using resilient queries
+  • src/app/api/agency/reservations/[id]/hotels/[HotelId]/route.ts — PUT/DELETE (capital H, fixed broken otelId] folder)
+  • src/app/api/agency/reservations/[id]/payments/[paymentId]/route.ts — added PUT
+  • src/app/api/agency/reservations/[id]/flights/ + [flightId]/ — full CRUD
+  • src/app/api/agency/reservations/[id]/visas/ + [visaId]/ — full CRUD
+  • src/app/api/agency/reservations/[id]/extras/ + [extraId]/ — full CRUD
+  • src/app/api/agency/reservations/[id]/email/route.ts — POST supplier/customer confirmation (matches user's screenshot format: Dear partner/Dear customer, customer info, services table, Confirm button, branded). Falls back to EmailLog when no RESEND_API_KEY.
+  • src/app/api/agency/reservations/[id]/voucher/route.ts — GET single-service or combined, print-ready HTML
+  • src/app/api/agency/reservations/[id]/invoice/route.ts — GET full tax invoice, print-ready HTML
+  • scripts/sync-provider.mjs — re-created (flips schema provider sqlite/postgresql based on DATABASE_URL)
+- BACKEND VERIFICATION: All routes return 200. Prisma client knows flightBooking/visaBooking/extraBooking (typeof = object). db:push succeeds, tables created on local sqlite.
+- FRONTEND REBUILD: Built src/app/agency/page.tsx + src/components/site/agency-page.tsx (~1700 lines) from scratch:
+  • TopBar with dark mode toggle (Sun/Moon, persists to localStorage)
+  • Auth gate (AdminLogin)
+  • BookingList (KPI cards, filter bar, dense table, eye=fraud dialog, Open button)
+  • ReservationDetail with COLLAPSIBLE HOVER SIDEBAR (56px rail → 260px on hover, desktop only):
+    - Bookings back button (prominent, always visible)
+    - Booking Reference + Status + Flagged + mini financials (Total/Paid/Balance)
+    - Actions: Send Supplier Confirmation (teal), Send Customer Confirmation (emerald), Voucher (dropdown), Invoice, Refresh
+  • 8 module tabs (Home/Hotels/Tours/Visas/Flights/Transport/Extras/Payments), ALL as Add/Edit/Remove expandable accordion cards (no summary tables)
+  • HomeTab: flat reservation edit form (Customer/Email/Phone, readonly Invoice#/BookingRef, dates, status, supplier-pending, sale-by, created/updated-by, invoice-type, remarks, terms, Save) + Guests section
+  • Each module: XxxForm (reusable Add/Edit) + XxxRecordCard (collapsible) + XxxSection (header + add + cards + empty state)
+  • Mobile: sidebar hidden, actions shown as a horizontal button bar + Bookings back button
+  • Email/Voucher/Invoice open in new tabs via window.open + document.write
+- FRONTEND VERIFICATION (Agent Browser):
+  • /agency loads → login screen → login with wanderlust-admin-2024 → 5 bookings load ✓
+  • Open booking → sidebar (collapsed rail) + Reservation Booking title + Home tab with flat form (readonly Invoice# WL-INV-200201, readonly Booking Ref WL-RES-200201) ✓
+  • Tours tab → 1 record (Hot Air Balloon) expandable card with Edit/Remove ✓
+  • Hover sidebar → expands to show Send Supplier/Customer Confirmation, Voucher, Invoice, Refresh ✓
+  • Click Send Customer Confirmation → POST /email 200 + preview opens in new tab "Your Booking Confirmation — WL-RES-200201" ✓
+  • Dark mode toggle works ✓
+  • Bookings back button visible ✓
+  • Lint clean ✓
+- COMMITTED + PUSHED: 1f3425c → GitHub. Production: /agency → 200 (after Vercel deploy).
+
+Stage Summary:
+- The ENTIRE agency CRM is rebuilt and working: backend (21 API routes) + frontend (full UI with sidebar, dark mode, all 8 editable module tabs, email/voucher/invoice).
+- Collapsible hover sidebar saves space (56px rail, expands to 260px on hover).
+- Dark mode toggle in TopBar (persists to localStorage).
+- Email format matches user's screenshot (Dear partner/customer, services table, Confirm button, branded).
+- Voucher (single + combined) and Invoice generate print-ready HTML in new tabs.
+- Bookings back button is prominent in the sidebar.
+- Production live at wanderlust-puce-nine.vercel.app/agency (password = ADMIN_PASSWORD env var on Vercel, or wanderlust-admin-2024 fallback).
+- NOTE: To enable Flights/Visas/Extras on PRODUCTION Neon, run: DATABASE_URL="<neon-url>" npx prisma db push — this creates the 3 new tables. Until then those tabs show "0 records" (the resilient queries prevent 500s).
