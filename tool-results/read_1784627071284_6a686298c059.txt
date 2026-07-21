@@ -1,0 +1,823 @@
+     1→// Wanderlust — Agency booking system types & serializers
+     2→
+     3→export type Role = "ADMIN" | "SENIOR_AGENT" | "JUNIOR_AGENT" | "ACCOUNTS";
+     4→
+     5→export interface EmployeeT {
+     6→  id: string;
+     7→  email: string;
+     8→  name: string;
+     9→  role: Role;
+    10→  phone?: string | null;
+    11→  active: boolean;
+    12→  createdAt: string;
+    13→}
+    14→
+    15→export interface SupplierT {
+    16→  id: string;
+    17→  name: string;
+    18→  type: string;
+    19→  contactPerson?: string | null;
+    20→  email?: string | null;
+    21→  phone?: string | null;
+    22→  whatsapp?: string | null;
+    23→  address?: string | null;
+    24→  city?: string | null;
+    25→  country?: string | null;
+    26→  currency: string;
+    27→  paymentTerms?: string | null;
+    28→  markupType: string;
+    29→  markupValue: number;
+    30→  active: boolean;
+    31→  rating: number;
+    32→  createdAt: string;
+    33→}
+    34→
+    35→export interface GuestT {
+    36→  id: string;
+    37→  reservationId: string;
+    38→  title: string;
+    39→  fullName: string;
+    40→  email?: string | null;
+    41→  phone?: string | null;
+    42→  passportNumber?: string | null;
+    43→  paxType: string;
+    44→  nationality?: string | null;
+    45→  dateOfBirth?: string | null;
+    46→  createdAt: string;
+    47→}
+    48→
+    49→export interface TourBookingT {
+    50→  id: string;
+    51→  reservationId: string;
+    52→  tourId?: string | null;
+    53→  tourName: string;
+    54→  tourOption?: string | null;
+    55→  transferOption: string;
+    56→  pickupLocation?: string | null;
+    57→  tourDate: string;
+    58→  pickupTime?: string | null;
+    59→  timeSlot?: string | null;
+    60→  noOfAdults: number;
+    61→  noOfChildren: number;
+    62→  supplierId?: string | null;
+    63→  supplierName?: string | null;
+    64→  confirmationNumber?: string | null;
+    65→  status: string;
+    66→  comments?: string | null;
+    67→  costUnit: string;
+    68→  adultCostRate: number;
+    69→  childCostRate: number;
+    70→  carCostRate: number;
+    71→  netAdultRate: number;
+    72→  netChildRate: number;
+    73→  totalCost: number;
+    74→  adultSellRate: number;
+    75→  childSellRate: number;
+    76→  carSellRate: number;
+    77→  sellNetAdult: number;
+    78→  sellNetChild: number;
+    79→  totalSell: number;
+    80→  showOnVoucher: boolean;
+    81→  createdBy?: string | null;
+    82→  createdAt: string;
+    83→  updatedAt: string;
+    84→}
+    85→
+    86→export interface TransportBookingT {
+    87→  id: string;
+    88→  reservationId: string;
+    89→  carType: string;
+    90→  noOfPax: number;
+    91→  transportType: string;
+    92→  pickupDateTime: string;
+    93→  pickupLocation: string;
+    94→  dropoffLocation: string;
+    95→  flightNumber?: string | null;
+    96→  supplierId?: string | null;
+    97→  supplierName?: string | null;
+    98→  contactNumber?: string | null;
+    99→  confirmationNumber?: string | null;
+   100→  status: string;
+   101→  comments?: string | null;
+   102→  netRate: number;
+   103→  sellRate: number;
+   104→  margin: number;
+   105→  showOnVoucher: boolean;
+   106→  createdBy?: string | null;
+   107→  createdAt: string;
+   108→  updatedAt: string;
+   109→}
+   110→
+   111→export interface HotelBookingT {
+   112→  id: string;
+   113→  reservationId: string;
+   114→  hotelId?: string | null;
+   115→  hotelName: string;
+   116→  roomType: string;
+   117→  mealPlan: string;
+   118→  checkInDate: string;
+   119→  checkOutDate: string;
+   120→  nights: number;
+   121→  noOfRooms: number;
+   122→  noOfAdults: number;
+   123→  noOfChildren: number;
+   124→  supplierId?: string | null;
+   125→  supplierName?: string | null;
+   126→  confirmationNumber?: string | null;
+   127→  status: string;
+   128→  comments?: string | null;
+   129→  costPerNight: number;
+   130→  totalCost: number;
+   131→  sellPerNight: number;
+   132→  totalSell: number;
+   133→  showOnVoucher: boolean;
+   134→  createdBy?: string | null;
+   135→  createdAt: string;
+   136→  updatedAt: string;
+   137→}
+   138→
+   139→export interface FlightBookingT {
+   140→  id: string;
+   141→  reservationId: string;
+   142→  airline: string;
+   143→  flightNumber?: string | null;
+   144→  flightType: string;
+   145→  cabinClass: string;
+   146→  origin: string;
+   147→  destination: string;
+   148→  departDate: string;
+   149→  returnDate?: string | null;
+   150→  noOfAdults: number;
+   151→  noOfChildren: number;
+   152→  noOfInfants: number;
+   153→  supplierId?: string | null;
+   154→  supplierName?: string | null;
+   155→  pnr?: string | null;
+   156→  confirmationNumber?: string | null;
+   157→  status: string;
+   158→  comments?: string | null;
+   159→  adultCostRate: number;
+   160→  childCostRate: number;
+   161→  infantCostRate: number;
+   162→  totalCost: number;
+   163→  adultSellRate: number;
+   164→  childSellRate: number;
+   165→  infantSellRate: number;
+   166→  totalSell: number;
+   167→  showOnVoucher: boolean;
+   168→  createdBy?: string | null;
+   169→  createdAt: string;
+   170→  updatedAt: string;
+   171→}
+   172→
+   173→export interface VisaBookingT {
+   174→  id: string;
+   175→  reservationId: string;
+   176→  visaType: string;
+   177→  destinationCountry: string;
+   178→  visaDuration?: string | null;
+   179→  processingType: string;
+   180→  applicationDate: string;
+   181→  travelDate?: string | null;
+   182→  noOfAdults: number;
+   183→  noOfChildren: number;
+   184→  supplierId?: string | null;
+   185→  supplierName?: string | null;
+   186→  applicationNumber?: string | null;
+   187→  confirmationNumber?: string | null;
+   188→  status: string;
+   189→  comments?: string | null;
+   190→  adultCostRate: number;
+   191→  childCostRate: number;
+   192→  totalCost: number;
+   193→  adultSellRate: number;
+   194→  childSellRate: number;
+   195→  totalSell: number;
+   196→  showOnVoucher: boolean;
+   197→  createdBy?: string | null;
+   198→  createdAt: string;
+   199→  updatedAt: string;
+   200→}
+   201→
+   202→export interface ExtraBookingT {
+   203→  id: string;
+   204→  reservationId: string;
+   205→  extraName: string;
+   206→  extraOption?: string | null;
+   207→  serviceDate?: string | null;
+   208→  quantity: number;
+   209→  supplierId?: string | null;
+   210→  supplierName?: string | null;
+   211→  confirmationNumber?: string | null;
+   212→  status: string;
+   213→  comments?: string | null;
+   214→  costRate: number;
+   215→  totalCost: number;
+   216→  sellRate: number;
+   217→  totalSell: number;
+   218→  showOnVoucher: boolean;
+   219→  createdBy?: string | null;
+   220→  createdAt: string;
+   221→  updatedAt: string;
+   222→}
+   223→
+   224→export interface PaymentT {
+   225→  id: string;
+   226→  reservationId: string;
+   227→  amount: number;
+   228→  currency: string;
+   229→  paymentMethod: string;
+   230→  paymentDate: string;
+   231→  reference?: string | null;
+   232→  status: string;
+   233→  notes?: string | null;
+   234→  receivedBy?: string | null;
+   235→  createdAt: string;
+   236→}
+   237→
+   238→export interface ReservationT {
+   239→  id: string;
+   240→  reference: string;
+   241→  invoiceNumber: string;
+   242→  customerId?: string | null;
+   243→  customerName: string;
+   244→  customerEmail: string;
+   245→  customerPhone?: string | null;
+   246→  isGuest: boolean;
+   247→  orderDate: string;
+   248→  invoiceDate?: string | null;
+   249→  bookingStatus: string;
+   250→  saleById?: string | null;
+   251→  saleBy?: EmployeeT | null;
+   252→  createdById?: string | null;
+   253→  updatedById?: string | null;
+   254→  invoiceType: string;
+   255→  currency: string;
+   256→  subTotal: number;
+   257→  vatAmount: number;
+   258→  totalAmount: number;
+   259→  amountPaid: number;
+   260→  balanceDue: number;
+   261→  remarks?: string | null;
+   262→  termsAccepted: boolean;
+   263→  // Fraud detection
+   264→  ipAddress?: string | null;
+   265→  userAgent?: string | null;
+   266→  fraudScore: number;
+   267→  fraudSignals: string; // JSON array string
+   268→  isFlagged: boolean;
+   269→  manualReview: string; // PENDING | REAL | SPAM
+   270→  tours: TourBookingT[];
+   271→  transports: TransportBookingT[];
+   272→  hotels: HotelBookingT[];
+   273→  flights: FlightBookingT[];
+   274→  visas: VisaBookingT[];
+   275→  extras: ExtraBookingT[];
+   276→  guests: GuestT[];
+   277→  payments: PaymentT[];
+   278→  createdAt: string;
+   279→  updatedAt: string;
+   280→}
+   281→
+   282→export interface ReservationListItemT {
+   283→  id: string;
+   284→  reference: string;
+   285→  invoiceNumber: string;
+   286→  customerName: string;
+   287→  customerEmail: string;
+   288→  customerPhone?: string | null;
+   289→  bookingStatus: string;
+   290→  orderDate: string;
+   291→  currency: string;
+   292→  totalAmount: number;
+   293→  amountPaid: number;
+   294→  balanceDue: number;
+   295→  saleById?: string | null;
+   296→  saleByName?: string | null;
+   297→  serviceCount: number;
+   298→  firstServiceName?: string | null;
+   299→  // Fraud detection (for the eye-button verification dialog)
+   300→  ipAddress?: string | null;
+   301→  userAgent?: string | null;
+   302→  fraudScore: number;
+   303→  fraudSignals: string; // JSON array string
+   304→  isFlagged: boolean;
+   305→  manualReview: string; // PENDING | REAL | SPAM
+   306→  createdAt: string;
+   307→}
+   308→
+   309→// ------------------------------------------------------------------
+   310→// Serializers
+   311→// ------------------------------------------------------------------
+   312→
+   313→export function serializeEmployee(e: any): EmployeeT {
+   314→  return {
+   315→    id: e.id,
+   316→    email: e.email,
+   317→    name: e.name,
+   318→    role: e.role as Role,
+   319→    phone: e.phone ?? null,
+   320→    active: e.active,
+   321→    createdAt: e.createdAt?.toISOString?.() ?? e.createdAt,
+   322→  };
+   323→}
+   324→
+   325→export function serializeSupplier(s: any): SupplierT {
+   326→  return {
+   327→    id: s.id,
+   328→    name: s.name,
+   329→    type: s.type,
+   330→    contactPerson: s.contactPerson ?? null,
+   331→    email: s.email ?? null,
+   332→    phone: s.phone ?? null,
+   333→    whatsapp: s.whatsapp ?? null,
+   334→    address: s.address ?? null,
+   335→    city: s.city ?? null,
+   336→    country: s.country ?? null,
+   337→    currency: s.currency,
+   338→    paymentTerms: s.paymentTerms ?? null,
+   339→    markupType: s.markupType,
+   340→    markupValue: s.markupValue,
+   341→    active: s.active,
+   342→    rating: s.rating,
+   343→    createdAt: s.createdAt?.toISOString?.() ?? s.createdAt,
+   344→  };
+   345→}
+   346→
+   347→export function serializeGuest(g: any): GuestT {
+   348→  return {
+   349→    id: g.id,
+   350→    reservationId: g.reservationId,
+   351→    title: g.title,
+   352→    fullName: g.fullName,
+   353→    email: g.email ?? null,
+   354→    phone: g.phone ?? null,
+   355→    passportNumber: g.passportNumber ?? null,
+   356→    paxType: g.paxType,
+   357→    nationality: g.nationality ?? null,
+   358→    dateOfBirth: g.dateOfBirth ? new Date(g.dateOfBirth).toISOString() : null,
+   359→    createdAt: g.createdAt?.toISOString?.() ?? g.createdAt,
+   360→  };
+   361→}
+   362→
+   363→export function serializeTourBooking(t: any): TourBookingT {
+   364→  return {
+   365→    id: t.id,
+   366→    reservationId: t.reservationId,
+   367→    tourId: t.tourId ?? null,
+   368→    tourName: t.tourName,
+   369→    tourOption: t.tourOption ?? null,
+   370→    transferOption: t.transferOption,
+   371→    pickupLocation: t.pickupLocation ?? null,
+   372→    tourDate: t.tourDate ? new Date(t.tourDate).toISOString() : new Date().toISOString(),
+   373→    pickupTime: t.pickupTime ?? null,
+   374→    timeSlot: t.timeSlot ?? null,
+   375→    noOfAdults: t.noOfAdults,
+   376→    noOfChildren: t.noOfChildren,
+   377→    supplierId: t.supplierId ?? null,
+   378→    supplierName: t.supplierName ?? null,
+   379→    confirmationNumber: t.confirmationNumber ?? null,
+   380→    status: t.status,
+   381→    comments: t.comments ?? null,
+   382→    costUnit: t.costUnit,
+   383→    adultCostRate: t.adultCostRate,
+   384→    childCostRate: t.childCostRate,
+   385→    carCostRate: t.carCostRate,
+   386→    netAdultRate: t.netAdultRate,
+   387→    netChildRate: t.netChildRate,
+   388→    totalCost: t.totalCost,
+   389→    adultSellRate: t.adultSellRate,
+   390→    childSellRate: t.childSellRate,
+   391→    carSellRate: t.carSellRate,
+   392→    sellNetAdult: t.sellNetAdult,
+   393→    sellNetChild: t.sellNetChild,
+   394→    totalSell: t.totalSell,
+   395→    showOnVoucher: t.showOnVoucher,
+   396→    createdBy: t.createdBy ?? null,
+   397→    createdAt: t.createdAt?.toISOString?.() ?? t.createdAt,
+   398→    updatedAt: t.updatedAt?.toISOString?.() ?? t.updatedAt,
+   399→  };
+   400→}
+   401→
+   402→export function serializeTransportBooking(t: any): TransportBookingT {
+   403→  return {
+   404→    id: t.id,
+   405→    reservationId: t.reservationId,
+   406→    carType: t.carType,
+   407→    noOfPax: t.noOfPax,
+   408→    transportType: t.transportType,
+   409→    pickupDateTime: t.pickupDateTime
+   410→      ? new Date(t.pickupDateTime).toISOString()
+   411→      : new Date().toISOString(),
+   412→    pickupLocation: t.pickupLocation,
+   413→    dropoffLocation: t.dropoffLocation,
+   414→    flightNumber: t.flightNumber ?? null,
+   415→    supplierId: t.supplierId ?? null,
+   416→    supplierName: t.supplierName ?? null,
+   417→    contactNumber: t.contactNumber ?? null,
+   418→    confirmationNumber: t.confirmationNumber ?? null,
+   419→    status: t.status,
+   420→    comments: t.comments ?? null,
+   421→    netRate: t.netRate,
+   422→    sellRate: t.sellRate,
+   423→    margin: t.margin,
+   424→    showOnVoucher: t.showOnVoucher,
+   425→    createdBy: t.createdBy ?? null,
+   426→    createdAt: t.createdAt?.toISOString?.() ?? t.createdAt,
+   427→    updatedAt: t.updatedAt?.toISOString?.() ?? t.updatedAt,
+   428→  };
+   429→}
+   430→
+   431→export function serializeHotelBooking(h: any): HotelBookingT {
+   432→  return {
+   433→    id: h.id,
+   434→    reservationId: h.reservationId,
+   435→    hotelId: h.hotelId ?? null,
+   436→    hotelName: h.hotelName,
+   437→    roomType: h.roomType,
+   438→    mealPlan: h.mealPlan,
+   439→    checkInDate: h.checkInDate
+   440→      ? new Date(h.checkInDate).toISOString()
+   441→      : new Date().toISOString(),
+   442→    checkOutDate: h.checkOutDate
+   443→      ? new Date(h.checkOutDate).toISOString()
+   444→      : new Date().toISOString(),
+   445→    nights: h.nights,
+   446→    noOfRooms: h.noOfRooms,
+   447→    noOfAdults: h.noOfAdults,
+   448→    noOfChildren: h.noOfChildren,
+   449→    supplierId: h.supplierId ?? null,
+   450→    supplierName: h.supplierName ?? null,
+   451→    confirmationNumber: h.confirmationNumber ?? null,
+   452→    status: h.status,
+   453→    comments: h.comments ?? null,
+   454→    costPerNight: h.costPerNight,
+   455→    totalCost: h.totalCost,
+   456→    sellPerNight: h.sellPerNight,
+   457→    totalSell: h.totalSell,
+   458→    showOnVoucher: h.showOnVoucher,
+   459→    createdBy: h.createdBy ?? null,
+   460→    createdAt: h.createdAt?.toISOString?.() ?? h.createdAt,
+   461→    updatedAt: h.updatedAt?.toISOString?.() ?? h.updatedAt,
+   462→  };
+   463→}
+   464→
+   465→export function serializeFlightBooking(f: any): FlightBookingT {
+   466→  return {
+   467→    id: f.id,
+   468→    reservationId: f.reservationId,
+   469→    airline: f.airline ?? "",
+   470→    flightNumber: f.flightNumber ?? null,
+   471→    flightType: f.flightType ?? "ONE_WAY",
+   472→    cabinClass: f.cabinClass ?? "ECONOMY",
+   473→    origin: f.origin ?? "",
+   474→    destination: f.destination ?? "",
+   475→    departDate: f.departDate
+   476→      ? new Date(f.departDate).toISOString()
+   477→      : new Date().toISOString(),
+   478→    returnDate: f.returnDate ? new Date(f.returnDate).toISOString() : null,
+   479→    noOfAdults: f.noOfAdults,
+   480→    noOfChildren: f.noOfChildren,
+   481→    noOfInfants: f.noOfInfants,
+   482→    supplierId: f.supplierId ?? null,
+   483→    supplierName: f.supplierName ?? null,
+   484→    pnr: f.pnr ?? null,
+   485→    confirmationNumber: f.confirmationNumber ?? null,
+   486→    status: f.status ?? "INITIATED",
+   487→    comments: f.comments ?? null,
+   488→    adultCostRate: f.adultCostRate,
+   489→    childCostRate: f.childCostRate,
+   490→    infantCostRate: f.infantCostRate,
+   491→    totalCost: f.totalCost,
+   492→    adultSellRate: f.adultSellRate,
+   493→    childSellRate: f.childSellRate,
+   494→    infantSellRate: f.infantSellRate,
+   495→    totalSell: f.totalSell,
+   496→    showOnVoucher: f.showOnVoucher,
+   497→    createdBy: f.createdBy ?? null,
+   498→    createdAt: f.createdAt?.toISOString?.() ?? f.createdAt,
+   499→    updatedAt: f.updatedAt?.toISOString?.() ?? f.updatedAt,
+   500→  };
+   501→}
+   502→
+   503→export function serializeVisaBooking(v: any): VisaBookingT {
+   504→  return {
+   505→    id: v.id,
+   506→    reservationId: v.reservationId,
+   507→    visaType: v.visaType ?? "TOURIST",
+   508→    destinationCountry: v.destinationCountry ?? "",
+   509→    visaDuration: v.visaDuration ?? null,
+   510→    processingType: v.processingType ?? "NORMAL",
+   511→    applicationDate: v.applicationDate
+   512→      ? new Date(v.applicationDate).toISOString()
+   513→      : new Date().toISOString(),
+   514→    travelDate: v.travelDate ? new Date(v.travelDate).toISOString() : null,
+   515→    noOfAdults: v.noOfAdults,
+   516→    noOfChildren: v.noOfChildren,
+   517→    supplierId: v.supplierId ?? null,
+   518→    supplierName: v.supplierName ?? null,
+   519→    applicationNumber: v.applicationNumber ?? null,
+   520→    confirmationNumber: v.confirmationNumber ?? null,
+   521→    status: v.status ?? "INITIATED",
+   522→    comments: v.comments ?? null,
+   523→    adultCostRate: v.adultCostRate,
+   524→    childCostRate: v.childCostRate,
+   525→    totalCost: v.totalCost,
+   526→    adultSellRate: v.adultSellRate,
+   527→    childSellRate: v.childSellRate,
+   528→    totalSell: v.totalSell,
+   529→    showOnVoucher: v.showOnVoucher,
+   530→    createdBy: v.createdBy ?? null,
+   531→    createdAt: v.createdAt?.toISOString?.() ?? v.createdAt,
+   532→    updatedAt: v.updatedAt?.toISOString?.() ?? v.updatedAt,
+   533→  };
+   534→}
+   535→
+   536→export function serializeExtraBooking(e: any): ExtraBookingT {
+   537→  return {
+   538→    id: e.id,
+   539→    reservationId: e.reservationId,
+   540→    extraName: e.extraName ?? "",
+   541→    extraOption: e.extraOption ?? null,
+   542→    serviceDate: e.serviceDate ? new Date(e.serviceDate).toISOString() : null,
+   543→    quantity: e.quantity,
+   544→    supplierId: e.supplierId ?? null,
+   545→    supplierName: e.supplierName ?? null,
+   546→    confirmationNumber: e.confirmationNumber ?? null,
+   547→    status: e.status ?? "INITIATED",
+   548→    comments: e.comments ?? null,
+   549→    costRate: e.costRate,
+   550→    totalCost: e.totalCost,
+   551→    sellRate: e.sellRate,
+   552→    totalSell: e.totalSell,
+   553→    showOnVoucher: e.showOnVoucher,
+   554→    createdBy: e.createdBy ?? null,
+   555→    createdAt: e.createdAt?.toISOString?.() ?? e.createdAt,
+   556→    updatedAt: e.updatedAt?.toISOString?.() ?? e.updatedAt,
+   557→  };
+   558→}
+   559→
+   560→export function serializePayment(p: any): PaymentT {
+   561→  return {
+   562→    id: p.id,
+   563→    reservationId: p.reservationId,
+   564→    amount: p.amount,
+   565→    currency: p.currency,
+   566→    paymentMethod: p.paymentMethod,
+   567→    paymentDate: p.paymentDate
+   568→      ? new Date(p.paymentDate).toISOString()
+   569→      : new Date().toISOString(),
+   570→    reference: p.reference ?? null,
+   571→    status: p.status,
+   572→    notes: p.notes ?? null,
+   573→    receivedBy: p.receivedBy ?? null,
+   574→    createdAt: p.createdAt?.toISOString?.() ?? p.createdAt,
+   575→  };
+   576→}
+   577→
+   578→export function serializeReservation(r: any): ReservationT {
+   579→  return {
+   580→    id: r.id,
+   581→    reference: r.reference,
+   582→    invoiceNumber: r.invoiceNumber,
+   583→    customerId: r.customerId ?? null,
+   584→    customerName: r.customerName,
+   585→    customerEmail: r.customerEmail,
+   586→    customerPhone: r.customerPhone ?? null,
+   587→    isGuest: r.isGuest,
+   588→    orderDate: r.orderDate ? new Date(r.orderDate).toISOString() : new Date().toISOString(),
+   589→    invoiceDate: r.invoiceDate ? new Date(r.invoiceDate).toISOString() : null,
+   590→    bookingStatus: r.bookingStatus,
+   591→    saleById: r.saleById ?? null,
+   592→    saleBy: r.employee ? serializeEmployee(r.employee) : null,
+   593→    createdById: r.createdById ?? null,
+   594→    updatedById: r.updatedById ?? null,
+   595→    invoiceType: r.invoiceType,
+   596→    currency: r.currency,
+   597→    subTotal: r.subTotal,
+   598→    vatAmount: r.vatAmount,
+   599→    totalAmount: r.totalAmount,
+   600→    amountPaid: r.amountPaid,
+   601→    balanceDue: r.balanceDue,
+   602→    remarks: r.remarks ?? null,
+   603→    termsAccepted: r.termsAccepted,
+   604→    ipAddress: r.ipAddress ?? null,
+   605→    userAgent: r.userAgent ?? null,
+   606→    fraudScore: r.fraudScore ?? 0,
+   607→    fraudSignals: r.fraudSignals ?? "[]",
+   608→    isFlagged: Boolean(r.isFlagged ?? false),
+   609→    manualReview: r.manualReview ?? "PENDING",
+   610→    tours: (r.tours ?? []).map(serializeTourBooking),
+   611→    transports: (r.transports ?? []).map(serializeTransportBooking),
+   612→    hotels: (r.hotels ?? []).map(serializeHotelBooking),
+   613→    flights: (r.flights ?? []).map(serializeFlightBooking),
+   614→    visas: (r.visas ?? []).map(serializeVisaBooking),
+   615→    extras: (r.extras ?? []).map(serializeExtraBooking),
+   616→    guests: (r.guests ?? []).map(serializeGuest),
+   617→    payments: (r.payments ?? []).map(serializePayment),
+   618→    createdAt: r.createdAt?.toISOString?.() ?? r.createdAt,
+   619→    updatedAt: r.updatedAt?.toISOString?.() ?? r.updatedAt,
+   620→  };
+   621→}
+   622→
+   623→export function serializeReservationListItem(r: any): ReservationListItemT {
+   624→  const tours: any[] = r.tours ?? [];
+   625→  const transports: any[] = r.transports ?? [];
+   626→  const hotels: any[] = r.hotels ?? [];
+   627→  const flights: any[] = r.flights ?? [];
+   628→  const visas: any[] = r.visas ?? [];
+   629→  const extras: any[] = r.extras ?? [];
+   630→
+   631→  let firstServiceName: string | null = null;
+   632→  if (tours[0]) firstServiceName = tours[0].tourName ?? null;
+   633→  if (!firstServiceName && hotels[0]) firstServiceName = hotels[0].hotelName ?? null;
+   634→  if (!firstServiceName && transports[0]) {
+   635→    const t = transports[0];
+   636→    firstServiceName = [t.pickupLocation, t.dropoffLocation]
+   637→      .filter(Boolean)
+   638→      .join(" → ");
+   639→    if (!firstServiceName) firstServiceName = "Transfer";
+   640→  }
+   641→  if (!firstServiceName && flights[0]) {
+   642→    const f = flights[0];
+   643→    firstServiceName =
+   644→      [f.airline, f.flightNumber, f.origin && f.destination ? `${f.origin} → ${f.destination}` : null]
+   645→        .filter(Boolean)
+   646→        .join(" — ") || "Flight";
+   647→  }
+   648→  if (!firstServiceName && visas[0]) {
+   649→    firstServiceName = visas[0].destinationCountry
+   650→      ? `${visas[0].destinationCountry} Visa`
+   651→      : "Visa";
+   652→  }
+   653→  if (!firstServiceName && extras[0]) {
+   654→    firstServiceName = extras[0].extraName || "Extra";
+   655→  }
+   656→
+   657→  return {
+   658→    id: r.id,
+   659→    reference: r.reference,
+   660→    invoiceNumber: r.invoiceNumber,
+   661→    customerName: r.customerName,
+   662→    customerEmail: r.customerEmail,
+   663→    customerPhone: r.customerPhone ?? null,
+   664→    bookingStatus: r.bookingStatus,
+   665→    orderDate: r.orderDate ? new Date(r.orderDate).toISOString() : new Date().toISOString(),
+   666→    currency: r.currency,
+   667→    totalAmount: r.totalAmount,
+   668→    amountPaid: r.amountPaid,
+   669→    balanceDue: r.balanceDue,
+   670→    saleById: r.saleById ?? null,
+   671→    saleByName: r.employee?.name ?? null,
+   672→    serviceCount:
+   673→      tours.length +
+   674→      transports.length +
+   675→      hotels.length +
+   676→      flights.length +
+   677→      visas.length +
+   678→      extras.length,
+   679→    firstServiceName,
+   680→    ipAddress: r.ipAddress ?? null,
+   681→    userAgent: r.userAgent ?? null,
+   682→    fraudScore: r.fraudScore ?? 0,
+   683→    fraudSignals: r.fraudSignals ?? "[]",
+   684→    isFlagged: Boolean(r.isFlagged ?? false),
+   685→    manualReview: r.manualReview ?? "PENDING",
+   686→    createdAt: r.createdAt?.toISOString?.() ?? r.createdAt,
+   687→  };
+   688→}
+   689→
+   690→// ------------------------------------------------------------------
+   691→// Pricing calculators — kept in sync with backend
+   692→// ------------------------------------------------------------------
+   693→
+   694→export function calcTourPricing(input: {
+   695→  costUnit: string;
+   696→  adultCostRate: number;
+   697→  childCostRate: number;
+   698→  carCostRate: number;
+   699→  adultSellRate: number;
+   700→  childSellRate: number;
+   701→  carSellRate: number;
+   702→  noOfAdults: number;
+   703→  noOfChildren: number;
+   704→}) {
+   705→  const perPerson = input.costUnit === "PER_PERSON";
+   706→  const adults = input.noOfAdults;
+   707→  const children = input.noOfChildren;
+   708→  const netAdultRate = perPerson ? input.adultCostRate * adults : input.adultCostRate;
+   709→  const netChildRate = perPerson ? input.childCostRate * children : input.childCostRate;
+   710→  const totalCost = netAdultRate + netChildRate + input.carCostRate;
+   711→  const sellNetAdult = perPerson ? input.adultSellRate * adults : input.adultSellRate;
+   712→  const sellNetChild = perPerson ? input.childSellRate * children : input.childSellRate;
+   713→  const totalSell = sellNetAdult + sellNetChild + input.carSellRate;
+   714→  return { netAdultRate, netChildRate, totalCost, sellNetAdult, sellNetChild, totalSell };
+   715→}
+   716→
+   717→export function calcTransportPricing(net: number, sell: number) {
+   718→  return { margin: sell - net };
+   719→}
+   720→
+   721→export function calcHotelPricing(input: {
+   722→  costPerNight: number;
+   723→  sellPerNight: number;
+   724→  nights: number;
+   725→  noOfRooms: number;
+   726→}) {
+   727→  const totalCost = input.costPerNight * input.nights * input.noOfRooms;
+   728→  const totalSell = input.sellPerNight * input.nights * input.noOfRooms;
+   729→  return { totalCost, totalSell };
+   730→}
+   731→
+   732→export function calcFlightPricing(input: {
+   733→  adultCostRate: number;
+   734→  childCostRate: number;
+   735→  infantCostRate: number;
+   736→  adultSellRate: number;
+   737→  childSellRate: number;
+   738→  infantSellRate: number;
+   739→  noOfAdults: number;
+   740→  noOfChildren: number;
+   741→  noOfInfants: number;
+   742→}) {
+   743→  const totalCost =
+   744→    input.adultCostRate * input.noOfAdults +
+   745→    input.childCostRate * input.noOfChildren +
+   746→    input.infantCostRate * input.noOfInfants;
+   747→  const totalSell =
+   748→    input.adultSellRate * input.noOfAdults +
+   749→    input.childSellRate * input.noOfChildren +
+   750→    input.infantSellRate * input.noOfInfants;
+   751→  return { totalCost, totalSell };
+   752→}
+   753→
+   754→export function calcVisaPricing(input: {
+   755→  adultCostRate: number;
+   756→  childCostRate: number;
+   757→  adultSellRate: number;
+   758→  childSellRate: number;
+   759→  noOfAdults: number;
+   760→  noOfChildren: number;
+   761→}) {
+   762→  const totalCost =
+   763→    input.adultCostRate * input.noOfAdults +
+   764→    input.childCostRate * input.noOfChildren;
+   765→  const totalSell =
+   766→    input.adultSellRate * input.noOfAdults +
+   767→    input.childSellRate * input.noOfChildren;
+   768→  return { totalCost, totalSell };
+   769→}
+   770→
+   771→export function calcExtraPricing(input: {
+   772→  costRate: number;
+   773→  sellRate: number;
+   774→  quantity: number;
+   775→}) {
+   776→  const qty = Math.max(0, input.quantity);
+   777→  const totalCost = input.costRate * qty;
+   778→  const totalSell = input.sellRate * qty;
+   779→  return { totalCost, totalSell };
+   780→}
+   781→
+   782→export function calcReservationTotals(
+   783→  reservation: {
+   784→    tours: { totalSell: number; totalCost: number }[];
+   785→    transports: { sellRate: number; netRate: number }[];
+   786→    hotels: { totalSell: number; totalCost: number }[];
+   787→    payments: { amount: number; status: string }[];
+   788→    invoiceType: string;
+   789→  },
+   790→  options: {
+   791→    vatRate?: number;
+   792→    flights?: { totalSell: number; totalCost: number }[];
+   793→    visas?: { totalSell: number; totalCost: number }[];
+   794→    extras?: { totalSell: number; totalCost: number }[];
+   795→  } = {},
+   796→) {
+   797→  const vatRate = options.vatRate ?? 0.05;
+   798→  const flights = options.flights ?? [];
+   799→  const visas = options.visas ?? [];
+   800→  const extras = options.extras ?? [];
+   801→  const subTotal =
+   802→    reservation.tours.reduce((s, t) => s + (t.totalSell || 0), 0) +
+   803→    reservation.transports.reduce((s, t) => s + (t.sellRate || 0), 0) +
+   804→    reservation.hotels.reduce((s, t) => s + (t.totalSell || 0), 0) +
+   805→    flights.reduce((s, f) => s + (f.totalSell || 0), 0) +
+   806→    visas.reduce((s, v) => s + (v.totalSell || 0), 0) +
+   807→    extras.reduce((s, e) => s + (e.totalSell || 0), 0);
+   808→  const totalCost =
+   809→    reservation.tours.reduce((s, t) => s + (t.totalCost || 0), 0) +
+   810→    reservation.transports.reduce((s, t) => s + (t.netRate || 0), 0) +
+   811→    reservation.hotels.reduce((s, t) => s + (t.totalCost || 0), 0) +
+   812→    flights.reduce((s, f) => s + (f.totalCost || 0), 0) +
+   813→    visas.reduce((s, v) => s + (v.totalCost || 0), 0) +
+   814→    extras.reduce((s, e) => s + (e.totalCost || 0), 0);
+   815→  const vatAmount = reservation.invoiceType === "TAXABLE" ? subTotal * vatRate : 0;
+   816→  const totalAmount = subTotal + vatAmount;
+   817→  const amountPaid = reservation.payments
+   818→    .filter((p) => p.status !== "REFUNDED")
+   819→    .reduce((s, p) => s + (p.amount || 0), 0);
+   820→  const balanceDue = Math.max(0, totalAmount - amountPaid);
+   821→  return { subTotal, vatAmount, totalAmount, amountPaid, balanceDue, totalCost };
+   822→}
+   823→
