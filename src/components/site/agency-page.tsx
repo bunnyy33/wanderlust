@@ -1666,14 +1666,37 @@ function ReservationDetail({ reservationId, onBack }: { reservationId: string; o
 
   return (
     <div className="flex gap-3 p-3">
-      {/* ============ SIDEBAR (collapsible on hover) ============ */}
+      {/* ============ SIDEBAR (collapsible on hover, full height) ============ */}
       <aside
-        className={cn("sticky top-16 hidden h-fit shrink-0 overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-all duration-200 lg:block", sidebarExpanded ? "w-[260px]" : "w-[56px]")}
+        className={cn("sticky top-16 hidden h-[calc(100vh-4rem)] shrink-0 flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm transition-all duration-200 lg:flex", sidebarExpanded ? "w-[260px]" : "w-[56px]")}
         onMouseEnter={() => setSidebarHover(true)}
         onMouseLeave={() => setSidebarHover(false)}
       >
-        {/* Actions only — no booking reference clutter */}
-        <div className="p-3">
+        {/* Booking reference + status + financials */}
+        <div className="shrink-0 p-3">
+          {sidebarExpanded ? (
+            <>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Booking Reference</p>
+              <p className="font-mono text-base font-bold tracking-tight text-foreground" style={{ fontFamily: "var(--font-display)" }}>{reservation.reference}</p>
+              <div className="mt-2 flex items-center gap-2">
+                <StatusBadge status={reservation.bookingStatus} />
+                {reservation.isFlagged && <Badge variant="outline" className="h-6 border-rose-200 bg-rose-50 px-2 text-[11px] text-rose-700 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-300"><ShieldAlert className="mr-1 size-3" />Flagged</Badge>}
+              </div>
+              <div className="mt-3 space-y-1 border-t border-border pt-2">
+                <div className="flex justify-between text-[11px]"><span className="text-muted-foreground">Total</span><span className="font-mono font-semibold text-foreground">{money(reservation.currency, reservation.totalAmount)}</span></div>
+                <div className="flex justify-between text-[11px]"><span className="text-muted-foreground">Paid</span><span className="font-mono text-emerald-700 dark:text-emerald-400">{money(reservation.currency, reservation.amountPaid)}</span></div>
+                <div className="flex justify-between text-[11px]"><span className="text-muted-foreground">Balance</span><span className={cn("font-mono font-semibold", reservation.balanceDue > 0 ? "text-rose-600 dark:text-rose-400" : "text-muted-foreground")}>{money(reservation.currency, reservation.balanceDue)}</span></div>
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col items-center gap-2">
+              <StatusBadge status={reservation.bookingStatus} />
+            </div>
+          )}
+        </div>
+
+        {/* Actions — scrollable if content grows */}
+        <div className="flex-1 overflow-y-auto border-t border-border p-3">
           <p className={cn("mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground", !sidebarExpanded && "hidden")}>Actions</p>
           <div className="space-y-1.5">
             <button type="button" disabled={emailBusy || docBusy} onClick={openSupplierEmailDialog} title="Send Supplier Confirmation"
