@@ -6,7 +6,7 @@ import { fetchReservationById } from "./agency-queries";
 import { db } from "@/lib/db";
 
 export async function recalcReservation(reservationId: string) {
-  const reservation = await fetchReservationForRecalc(reservationId);
+  const reservation = await fetchReservationById(reservationId);
   if (!reservation) return null;
 
   const totals = calcReservationTotals(
@@ -20,10 +20,12 @@ export async function recalcReservation(reservationId: string) {
     reservation.visas,
     reservation.extras,
   );
+  // Only persist keys that exist on the Reservation model (totalCost is informational)
+  const { subTotal, vatAmount, totalAmount, amountPaid, balanceDue } = totals;
 
   await db.reservation.update({
     where: { id: reservationId },
-    data: totals,
+    data: { subTotal, vatAmount, totalAmount, amountPaid, balanceDue },
   });
 
   // Re-fetch through the resilient helper so the returned object includes

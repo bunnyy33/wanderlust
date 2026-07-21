@@ -50,12 +50,12 @@ import { Textarea } from "@/components/ui/textarea";
 /* ====================================================================== */
 
 const BOOKING_STATUSES = [
-  { value: "PENDING", label: "In Process", badge: "bg-amber-100 text-amber-800 border-amber-200" },
-  { value: "SUPPLIER_PENDING", label: "Supplier Confirmation Pending", badge: "bg-orange-100 text-orange-800 border-orange-200" },
-  { value: "SUPPLIER_CONFIRMED", label: "Supplier Confirmed", badge: "bg-sky-100 text-sky-800 border-sky-200" },
-  { value: "CUSTOMER_CONFIRMED", label: "Customer Confirmed", badge: "bg-teal-100 text-teal-800 border-teal-200" },
-  { value: "COMPLETED", label: "Completed", badge: "bg-emerald-100 text-emerald-800 border-emerald-200" },
-  { value: "CANCELLED", label: "Cancelled", badge: "bg-rose-100 text-rose-800 border-rose-200" },
+  { value: "PENDING", label: "In Process", badge: "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800" },
+  { value: "SUPPLIER_PENDING", label: "Supplier Confirmation Pending", badge: "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800" },
+  { value: "SUPPLIER_CONFIRMED", label: "Supplier Confirmed", badge: "bg-sky-100 text-sky-800 border-sky-200 dark:bg-sky-950 dark:text-sky-300 dark:border-sky-800" },
+  { value: "CUSTOMER_CONFIRMED", label: "Customer Confirmed", badge: "bg-teal-100 text-teal-800 border-teal-200 dark:bg-teal-950 dark:text-teal-300 dark:border-teal-800" },
+  { value: "COMPLETED", label: "Completed", badge: "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800" },
+  { value: "CANCELLED", label: "Cancelled", badge: "bg-rose-100 text-rose-800 border-rose-200 dark:bg-rose-950 dark:text-rose-300 dark:border-rose-800" },
 ];
 const SERVICE_STATUSES = [
   { value: "INITIATED", label: "Initiated" },
@@ -372,10 +372,10 @@ function BookingList({ onOpen, onView }: {
     <div className="flex flex-col gap-3 p-3">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
-          { label: "Total Bookings", value: kpis.total.toString(), cls: "border-primary/20 bg-primary/5 text-primary" },
-          { label: "Revenue", value: money(kpis.currency, kpis.revenue), cls: "border-gold/30 bg-gold/5" },
-          { label: "Pending", value: kpis.pending.toString(), cls: "border-amber-200 bg-amber-50 text-amber-800" },
-          { label: "Completed", value: kpis.completed.toString(), cls: "border-emerald-200 bg-emerald-50 text-emerald-800" },
+          { label: "Total Bookings", value: kpis.total.toString(), cls: "border-primary/20 bg-primary/5 text-primary dark:bg-primary/10 dark:text-primary" },
+          { label: "Revenue", value: money(kpis.currency, kpis.revenue), cls: "border-gold/30 bg-gold/5 dark:bg-gold/10" },
+          { label: "Pending", value: kpis.pending.toString(), cls: "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300" },
+          { label: "Completed", value: kpis.completed.toString(), cls: "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" },
         ].map((k) => (
           <div key={k.label} className={cn("rounded-lg border p-3", k.cls)}>
             <p className="text-[11px] font-semibold uppercase tracking-wider opacity-80">{k.label}</p>
@@ -1494,6 +1494,7 @@ function ReservationDetail({ reservationId, onBack }: { reservationId: string; o
   const [docBusy, setDocBusy] = useState(false);
   const [voucherOpen, setVoucherOpen] = useState(false);
   const [supplierEmailOpen, setSupplierEmailOpen] = useState(false);
+  const [customerEmailOpen, setCustomerEmailOpen] = useState(false);
   const [selectedServices, setSelectedServices] = useState<Set<string>>(new Set());
 
   const sidebarExpanded = sidebarHover || sidebarPinned;
@@ -1594,6 +1595,29 @@ function ReservationDetail({ reservationId, onBack }: { reservationId: string; o
     sendEmail("SUPPLIER_CONFIRMATION", serviceIds);
   }
 
+  function openCustomerEmailDialog() {
+    // Pre-select ALL services for customer confirmation
+    const preSelected = new Set<string>();
+    for (const s of allServices) preSelected.add(s.key);
+    setSelectedServices(preSelected);
+    setCustomerEmailOpen(true);
+  }
+
+  function sendSelectedCustomerEmail() {
+    const serviceIds: { tours?: string[]; hotels?: string[]; transports?: string[]; flights?: string[]; visas?: string[]; extras?: string[] } = {};
+    for (const s of allServices) {
+      if (!selectedServices.has(s.key)) continue;
+      const arr = serviceIds[`${s.type}s` as keyof typeof serviceIds] ?? [];
+      arr.push(s.id);
+      (serviceIds as any)[`${s.type}s`] = arr;
+    }
+    if (Object.keys(serviceIds).length === 0) {
+      toast.error("Select at least one activity to include");
+      return;
+    }
+    sendEmail("CUSTOMER_CONFIRMATION", serviceIds);
+  }
+
   async function openVoucher(opts?: { serviceType?: string; serviceId?: string }) {
     if (!reservation) return;
     setVoucherOpen(false); setDocBusy(true);
@@ -1648,36 +1672,8 @@ function ReservationDetail({ reservationId, onBack }: { reservationId: string; o
         onMouseEnter={() => setSidebarHover(true)}
         onMouseLeave={() => setSidebarHover(false)}
       >
-        {/* Back + reference */}
+        {/* Actions only — no booking reference clutter */}
         <div className="p-3">
-          <button type="button" onClick={onBack} className="flex items-center gap-2 text-xs font-medium text-foreground hover:text-primary" title="Back to Bookings">
-            <ArrowLeft className="size-4 shrink-0" />
-            {sidebarExpanded && <span>Bookings</span>}
-          </button>
-          {sidebarExpanded && (
-            <>
-              <p className="mt-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Booking Reference</p>
-              <p className="font-mono text-base font-bold tracking-tight text-foreground" style={{ fontFamily: "var(--font-display)" }}>{reservation.reference}</p>
-              <div className="mt-2 flex items-center gap-2">
-                <StatusBadge status={reservation.bookingStatus} />
-                {reservation.isFlagged && <Badge variant="outline" className="h-6 border-rose-200 bg-rose-50 px-2 text-[11px] text-rose-700"><ShieldAlert className="mr-1 size-3" />Flagged</Badge>}
-              </div>
-              <div className="mt-3 space-y-1 border-t border-border pt-2">
-                <div className="flex justify-between text-[11px]"><span className="text-muted-foreground">Total</span><span className="font-mono font-semibold text-foreground">{money(reservation.currency, reservation.totalAmount)}</span></div>
-                <div className="flex justify-between text-[11px]"><span className="text-muted-foreground">Paid</span><span className="font-mono text-emerald-700">{money(reservation.currency, reservation.amountPaid)}</span></div>
-                <div className="flex justify-between text-[11px]"><span className="text-muted-foreground">Balance</span><span className={cn("font-mono font-semibold", reservation.balanceDue > 0 ? "text-rose-600" : "text-muted-foreground")}>{money(reservation.currency, reservation.balanceDue)}</span></div>
-              </div>
-            </>
-          )}
-          {!sidebarExpanded && (
-            <div className="mt-3 flex flex-col items-center gap-2">
-              <StatusBadge status={reservation.bookingStatus} />
-            </div>
-          )}
-        </div>
-
-        {/* Actions */}
-        <div className="border-t border-border p-3">
           <p className={cn("mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground", !sidebarExpanded && "hidden")}>Actions</p>
           <div className="space-y-1.5">
             <button type="button" disabled={emailBusy || docBusy} onClick={openSupplierEmailDialog} title="Send Supplier Confirmation"
@@ -1685,8 +1681,8 @@ function ReservationDetail({ reservationId, onBack }: { reservationId: string; o
               {emailBusy ? <Loader2 className="size-3.5 animate-spin" /> : <Mail className="size-3.5 shrink-0" />}
               {sidebarExpanded && <span>Supplier Confirmation</span>}
             </button>
-            <button type="button" disabled={emailBusy || docBusy} onClick={() => sendEmail("CUSTOMER_CONFIRMATION")} title="Send Customer Confirmation"
-              className={cn("flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-left text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50", !sidebarExpanded && "justify-center px-0")}>
+            <button type="button" disabled={emailBusy || docBusy} onClick={openCustomerEmailDialog} title="Send Customer Confirmation"
+              className={cn("flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-left text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300", !sidebarExpanded && "justify-center px-0")}>
               {emailBusy ? <Loader2 className="size-3.5 animate-spin" /> : <Mail className="size-3.5 shrink-0" />}
               {sidebarExpanded && <span>Customer Confirmation</span>}
             </button>
@@ -1728,33 +1724,28 @@ function ReservationDetail({ reservationId, onBack }: { reservationId: string; o
               {docBusy ? <Loader2 className="size-3.5 animate-spin" /> : <FileText className="size-3.5 shrink-0 text-gold" />}
               {sidebarExpanded && <span>Invoice</span>}
             </button>
-            {/* Refresh */}
-            <button type="button" onClick={refresh} disabled={refreshing} title="Refresh"
-              className={cn("flex w-full items-center gap-2 rounded-md border border-border px-2.5 py-2 text-left text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50", !sidebarExpanded && "justify-center px-0")}>
-              {refreshing ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5 shrink-0" />}
-              {sidebarExpanded && <span>Refresh</span>}
-            </button>
           </div>
         </div>
       </aside>
 
       {/* ============ MAIN CONTENT ============ */}
       <div className="flex min-w-0 flex-1 flex-col gap-3">
-        {/* Mobile back button (sidebar is desktop-only) */}
-        <Button variant="outline" size="sm" className="h-8 w-fit text-xs lg:hidden" onClick={onBack}><ArrowLeft className="mr-1.5 size-4" />Bookings</Button>
-
         {/* Mobile actions bar */}
         <div className="flex flex-wrap items-center gap-1.5 lg:hidden">
           <Button variant="outline" size="sm" className="h-8 text-xs" onClick={openSupplierEmailDialog} disabled={emailBusy}><Mail className="mr-1 size-3.5" />Supplier</Button>
-          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => sendEmail("CUSTOMER_CONFIRMATION")} disabled={emailBusy}><Mail className="mr-1 size-3.5" />Customer</Button>
+          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={openCustomerEmailDialog} disabled={emailBusy}><Mail className="mr-1 size-3.5" />Customer</Button>
           <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => openVoucher()} disabled={docBusy}><Ticket className="mr-1 size-3.5" />Voucher</Button>
           <Button variant="outline" size="sm" className="h-8 text-xs" onClick={openInvoice} disabled={docBusy}><FileText className="mr-1 size-3.5" />Invoice</Button>
         </div>
 
-        <div className="flex flex-col gap-2">
+        {/* Title row with Bookings button on the right */}
+        <div className="flex items-center justify-between gap-2">
           <h2 className="px-1 text-lg font-bold tracking-tight text-foreground" style={{ fontFamily: "var(--font-display)" }}>Reservation Booking</h2>
-          <ServiceTabBar active={activeTab} counts={tabCounts} onActivate={setActiveTab} />
+          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={onBack}>
+            <ArrowLeft className="mr-1.5 size-4" />Bookings
+          </Button>
         </div>
+        <ServiceTabBar active={activeTab} counts={tabCounts} onActivate={setActiveTab} />
 
         {activeTab === "home" && <HomeTab reservation={reservation} employees={employees} onUpdated={handleUpdated} />}
         {activeTab === "tours" && <ToursSection reservation={reservation} suppliers={suppliers} experiences={experiences} onUpdated={handleUpdated} />}
@@ -1824,6 +1815,69 @@ function ReservationDetail({ reservationId, onBack }: { reservationId: string; o
             <div className="flex gap-2">
               <Button variant="outline" size="sm" className="h-8" onClick={() => setSupplierEmailOpen(false)}>Cancel</Button>
               <Button size="sm" className="h-8 bg-primary text-primary-foreground" disabled={emailBusy || selectedServices.size === 0} onClick={sendSelectedSupplierEmail}>
+                {emailBusy ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Mail className="mr-1.5 size-3.5" />}
+                Send Confirmation
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Customer Confirmation Selection Dialog */}
+      <Dialog open={customerEmailOpen} onOpenChange={setCustomerEmailOpen}>
+        <DialogContent className="max-w-2xl gap-0 p-0">
+          <DialogHeader className="p-4 pb-2">
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="size-5 text-emerald-600" />
+              Send Customer Confirmation
+            </DialogTitle>
+            <DialogDescription>
+              Select which activities to include in the customer's confirmation email. The email will be sent to {reservation.customerEmail}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto p-4 pt-2">
+            {allServices.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">No services added to this booking yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {allServices.map((s) => {
+                  const checked = selectedServices.has(s.key);
+                  return (
+                    <label
+                      key={s.key}
+                      className={cn(
+                        "flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors",
+                        checked ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-950" : "border-border hover:bg-muted/50",
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleServiceSelection(s.key)}
+                        className="mt-1 size-4 accent-emerald-600"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-[10px]">{s.typeLabel}</Badge>
+                          <span className="truncate text-sm font-medium text-foreground">{s.name}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {s.date}{s.supplierName ? ` · Supplier: ${s.supplierName}` : ""}
+                        </p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="flex items-center justify-between gap-2 p-4 pt-2">
+            <p className="text-xs text-muted-foreground">
+              {selectedServices.size} of {allServices.length} selected
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="h-8" onClick={() => setCustomerEmailOpen(false)}>Cancel</Button>
+              <Button size="sm" className="h-8 bg-emerald-600 text-white hover:bg-emerald-700" disabled={emailBusy || selectedServices.size === 0} onClick={sendSelectedCustomerEmail}>
                 {emailBusy ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Mail className="mr-1.5 size-3.5" />}
                 Send Confirmation
               </Button>

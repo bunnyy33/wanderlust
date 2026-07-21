@@ -175,9 +175,10 @@ export async function POST(req: NextRequest) {
 
     // Compute initial totals (empty services)
     const totals = calcReservationTotals([], [], [], [], created.invoiceType, VAT_RATE);
+    const { subTotal, vatAmount, totalAmount, amountPaid, balanceDue } = totals;
     await db.reservation.update({
       where: { id: created.id },
-      data: totals,
+      data: { subTotal, vatAmount, totalAmount, amountPaid, balanceDue },
     });
     const updated = await fetchReservationById(created.id);
 
