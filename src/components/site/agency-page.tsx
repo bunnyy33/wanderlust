@@ -1493,6 +1493,8 @@ function ReservationDetail({ reservationId, onBack }: { reservationId: string; o
   const [emailBusy, setEmailBusy] = useState(false);
   const [docBusy, setDocBusy] = useState(false);
   const [voucherOpen, setVoucherOpen] = useState(false);
+  const [supplierEmailOpen, setSupplierEmailOpen] = useState(false);
+  const [selectedServices, setSelectedServices] = useState<Set<string>>(new Set());
 
   const sidebarExpanded = sidebarHover || sidebarPinned;
 
@@ -1528,11 +1530,25 @@ function ReservationDetail({ reservationId, onBack }: { reservationId: string; o
     return { hotels: reservation.hotels.length, tours: reservation.tours.length, transport: reservation.transports.length, flights: reservation.flights.length, visas: reservation.visas.length, extras: reservation.extras.length, payments: reservation.payments.length };
   }, [reservation]);
 
-  async function sendEmail(type: "SUPPLIER_CONFIRMATION" | "CUSTOMER_CONFIRMATION") {
+  // Build a flat list of all services with supplier info for the selection dialog
+  const allServices = useMemo(() => {
+    if (!reservation) return [];
+    const list: { key: string; id: string; type: string; typeLabel: string; name: string; date: string; supplierId: string | null; supplierName: string | null }[] = [];
+    for (const t of reservation.tours) list.push({ key: `tour-${t.id}`, id: t.id, type: "tour", typeLabel: "Tour", name: t.tourName, date: fmtDate(t.tourDate), supplierId: t.supplierId ?? null, supplierName: t.supplierName ?? null });
+    for (const h of reservation.hotels) list.push({ key: `hotel-${h.id}`, id: h.id, type: "hotel", typeLabel: "Hotel", name: h.hotelName, date: fmtDate(h.checkInDate), supplierId: h.supplierId ?? null, supplierName: h.supplierName ?? null });
+    for (const t of reservation.transports) list.push({ key: `transport-${t.id}`, id: t.id, type: "transport", typeLabel: "Transport", name: `${t.carType} — ${t.pickupLocation} → ${t.dropoffLocation}`, date: fmtDate(t.pickupDateTime), supplierId: t.supplierId ?? null, supplierName: t.supplierName ?? null });
+    for (const f of reservation.flights) list.push({ key: `flight-${f.id}`, id: f.id, type: "flight", typeLabel: "Flight", name: `${f.airline} ${f.flightNumber || ""}`.trim(), date: fmtDate(f.departDate), supplierId: f.supplierId ?? null, supplierName: f.supplierName ?? null });
+    for (const v of reservation.visas) list.push({ key: `visa-${v.id}`, id: v.id, type: "visa", typeLabel: "Visa", name: `${v.visaType} — ${v.destinationCountry}`, date: fmtDate(v.travelDate), supplierId: v.supplierId ?? null, supplierName: v.supplierName ?? null });
+    for (const e of reservation.extras) list.push({ key: `extra-${e.id}`, id: e.id, type: "extra", typeLabel: "Extra", name: e.extraName, date: fmtDate(e.serviceDate), supplierId: e.supplierId ?? null, supplierName: e.supplierName ?? null });
+    return list;
+  }, [reservation]);
+
+  async function sendEmail(type: "SUPPLIER_CONFIRMATION" | "CUSTOMER_CONFIRMATION", serviceIds?: { tours?: string[]; hotels?: string[]; transports?: string[]; flights?: string[]; visas?: string[]; extras?: string[] }) {
     if (!reservation) return;
     setEmailBusy(true);
+    setSupplierEmailOpen(false);
     try {
-      const res = await fetch(`/api/agency/reservations/${reservation.id}/email`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type }) });
+      const res = await fetch(`/api/agency/reservations/${reservation.id}/email`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, serviceIds }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
       if (data.sent) toast.success("Email sent");
@@ -1541,6 +1557,41 @@ function ReservationDetail({ reservationId, onBack }: { reservationId: string; o
       if (data.preview) { try { const w = window.open("", "_blank"); if (w) { w.document.write(data.preview); w.document.close(); } } catch { /* popup blocked */ } }
     } catch (e: any) { toast.error(e.message ?? "Failed to send email"); }
     finally { setEmailBusy(false); }
+  }
+
+  function openSupplierEmailDialog() {
+    // Pre-select all services that have a supplier assigned
+    const preSelected = new Set<string>();
+    for (const s of allServices) {
+      if (s.supplierId) preSelected.add(s.key);
+    }
+    setSelectedServices(preSelected);
+    setSupplierEmailOpen(true);
+  }
+
+  function toggleServiceSelection(key: string) {
+    setSelectedServices((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function sendSelectedSupplierEmail() {
+    // Build serviceIds object from selected keys
+    const serviceIds: { tours?: string[]; hotels?: string[]; transports?: string[]; flights?: string[]; visas?: string[]; extras?: string[] } = {};
+    for (const s of allServices) {
+      if (!selectedServices.has(s.key)) continue;
+      const arr = serviceIds[`${s.type}s` as keyof typeof serviceIds] ?? [];
+      arr.push(s.id);
+      (serviceIds as any)[`${s.type}s`] = arr;
+    }
+    if (Object.keys(serviceIds).length === 0) {
+      toast.error("Select at least one activity with a supplier assigned");
+      return;
+    }
+    sendEmail("SUPPLIER_CONFIRMATION", serviceIds);
   }
 
   async function openVoucher(opts?: { serviceType?: string; serviceId?: string }) {
@@ -1629,7 +1680,7 @@ function ReservationDetail({ reservationId, onBack }: { reservationId: string; o
         <div className="border-t border-border p-3">
           <p className={cn("mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground", !sidebarExpanded && "hidden")}>Actions</p>
           <div className="space-y-1.5">
-            <button type="button" disabled={emailBusy || docBusy} onClick={() => sendEmail("SUPPLIER_CONFIRMATION")} title="Send Supplier Confirmation"
+            <button type="button" disabled={emailBusy || docBusy} onClick={openSupplierEmailDialog} title="Send Supplier Confirmation"
               className={cn("flex items-center gap-2 rounded-md border border-primary/20 bg-primary/5 px-2.5 py-2 text-left text-xs font-medium text-primary transition-colors hover:bg-primary/10 disabled:opacity-50", !sidebarExpanded && "justify-center px-0")}>
               {emailBusy ? <Loader2 className="size-3.5 animate-spin" /> : <Mail className="size-3.5 shrink-0" />}
               {sidebarExpanded && <span>Supplier Confirmation</span>}
@@ -1651,16 +1702,22 @@ function ReservationDetail({ reservationId, onBack }: { reservationId: string; o
               {voucherOpen && sidebarExpanded && (
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setVoucherOpen(false)} />
-                  <div className="absolute left-0 right-0 z-40 mt-1 rounded-md border border-border bg-card py-1 shadow-lg">
+                  <div className="absolute left-0 right-0 z-40 mt-1 max-h-80 overflow-y-auto rounded-md border border-border bg-card py-1 shadow-lg">
                     <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold hover:bg-muted" onClick={() => openVoucher()}><Ticket className="size-3.5 text-primary" />Combined Voucher (all)</button>
                     <div className="my-1 border-t border-border" />
-                    {voucherServiceOptions.map((opt) => opt.count > 0 ? (
-                      <button key={opt.serviceType} type="button" className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs hover:bg-muted"
-                        onClick={() => { let id: string | undefined; if (opt.serviceType === "tour") id = reservation.tours[0]?.id; else if (opt.serviceType === "hotel") id = reservation.hotels[0]?.id; else if (opt.serviceType === "transport") id = reservation.transports[0]?.id; else if (opt.serviceType === "flight") id = reservation.flights[0]?.id; else if (opt.serviceType === "visa") id = reservation.visas[0]?.id; else if (opt.serviceType === "extra") id = reservation.extras[0]?.id; if (id) openVoucher({ serviceType: opt.serviceType, serviceId: id }); }}>
-                        <span className="flex items-center gap-2"><Ticket className="size-3.5 text-muted-foreground" />{opt.label}</span>
-                        <Badge variant="outline" className="text-[10px]">{opt.count}</Badge>
+                    {/* Individual records */}
+                    {allServices.length === 0 ? (
+                      <p className="px-3 py-2 text-xs text-muted-foreground">No services added yet.</p>
+                    ) : allServices.map((s) => (
+                      <button key={s.key} type="button" className="flex w-full items-start gap-2 px-3 py-2 text-left text-xs hover:bg-muted"
+                        onClick={() => openVoucher({ serviceType: s.type, serviceId: s.id })}>
+                        <Ticket className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">{s.name}</span>
+                          <span className="block text-[10px] text-muted-foreground">{s.typeLabel} · {s.date}{s.supplierName ? ` · ${s.supplierName}` : ""}</span>
+                        </span>
                       </button>
-                    ) : null)}
+                    ))}
                   </div>
                 </>
               )}
@@ -1688,7 +1745,7 @@ function ReservationDetail({ reservationId, onBack }: { reservationId: string; o
 
         {/* Mobile actions bar */}
         <div className="flex flex-wrap items-center gap-1.5 lg:hidden">
-          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => sendEmail("SUPPLIER_CONFIRMATION")} disabled={emailBusy}><Mail className="mr-1 size-3.5" />Supplier</Button>
+          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={openSupplierEmailDialog} disabled={emailBusy}><Mail className="mr-1 size-3.5" />Supplier</Button>
           <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => sendEmail("CUSTOMER_CONFIRMATION")} disabled={emailBusy}><Mail className="mr-1 size-3.5" />Customer</Button>
           <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => openVoucher()} disabled={docBusy}><Ticket className="mr-1 size-3.5" />Voucher</Button>
           <Button variant="outline" size="sm" className="h-8 text-xs" onClick={openInvoice} disabled={docBusy}><FileText className="mr-1 size-3.5" />Invoice</Button>
@@ -1708,6 +1765,72 @@ function ReservationDetail({ reservationId, onBack }: { reservationId: string; o
         {activeTab === "extras" && <ExtrasSection reservation={reservation} suppliers={suppliers} onUpdated={handleUpdated} />}
         {activeTab === "payments" && <PaymentsSection reservation={reservation} onUpdated={handleUpdated} />}
       </div>
+
+      {/* Supplier Confirmation Selection Dialog */}
+      <Dialog open={supplierEmailOpen} onOpenChange={setSupplierEmailOpen}>
+        <DialogContent className="max-w-2xl gap-0 p-0">
+          <DialogHeader className="p-4 pb-2">
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="size-5 text-primary" />
+              Send Supplier Confirmation
+            </DialogTitle>
+            <DialogDescription>
+              Select which activities to send to their suppliers. Only activities with a supplier assigned can be sent. Each supplier receives only their activities.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto p-4 pt-2">
+            {allServices.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">No services added to this booking yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {allServices.map((s) => {
+                  const checked = selectedServices.has(s.key);
+                  const hasSupplier = !!s.supplierId;
+                  return (
+                    <label
+                      key={s.key}
+                      className={cn(
+                        "flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors",
+                        checked ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50",
+                        !hasSupplier && "cursor-not-allowed opacity-50",
+                      )}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={!hasSupplier}
+                        onChange={() => toggleServiceSelection(s.key)}
+                        className="mt-1 size-4 accent-primary"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-[10px]">{s.typeLabel}</Badge>
+                          <span className="truncate text-sm font-medium text-foreground">{s.name}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {s.date} · Supplier: {s.supplierName ?? <span className="text-rose-600">Not assigned</span>}
+                        </p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <DialogFooter className="flex items-center justify-between gap-2 p-4 pt-2">
+            <p className="text-xs text-muted-foreground">
+              {selectedServices.size} selected · {allServices.filter(s => s.supplierId).length} have suppliers
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" className="h-8" onClick={() => setSupplierEmailOpen(false)}>Cancel</Button>
+              <Button size="sm" className="h-8 bg-primary text-primary-foreground" disabled={emailBusy || selectedServices.size === 0} onClick={sendSelectedSupplierEmail}>
+                {emailBusy ? <Loader2 className="mr-1.5 size-3.5 animate-spin" /> : <Mail className="mr-1.5 size-3.5" />}
+                Send Confirmation
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1726,14 +1849,20 @@ export function AgencyPage() {
   });
 
   useEffect(() => { if (!adminAuthChecked) checkAdminAuth(); }, [adminAuthChecked, checkAdminAuth]);
-  useEffect(() => { try { localStorage.setItem("agency-dark", dark ? "1" : "0"); } catch {} }, [dark]);
+  // Toggle dark class on <html> so CSS variables cascade to all descendants
+  useEffect(() => {
+    const root = document.documentElement;
+    if (dark) root.classList.add("dark");
+    else root.classList.remove("dark");
+    try { localStorage.setItem("agency-dark", dark ? "1" : "0"); } catch {}
+  }, [dark]);
 
   function goHome() { router.push("/"); }
   async function handleSignOut() { await adminLogout(); router.push("/"); }
 
   if (!adminAuthChecked) {
     return (
-      <div className={cn("grid min-h-screen place-items-center bg-background", dark && "dark")}>
+      <div className="grid min-h-screen place-items-center bg-background">
         <Loader2 className="size-6 animate-spin text-primary" />
       </div>
     );
@@ -1741,7 +1870,7 @@ export function AgencyPage() {
   if (!adminAuthed) return <AdminLogin onExit={goHome} />;
 
   return (
-    <div className={cn("flex min-h-screen flex-col bg-background", dark && "dark")}>
+    <div className="flex min-h-screen flex-col bg-background">
       <TopBar onSignOut={handleSignOut} onBackToSite={goHome} dark={dark} onToggleDark={() => setDark((v) => !v)} />
       {!openReservationId && (
         <ServiceTabBar active="home" counts={{}} onActivate={() => { /* Home only when no reservation is open */ }} />
