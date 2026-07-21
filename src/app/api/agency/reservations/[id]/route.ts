@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAdminAuthed } from "@/lib/admin-auth";
 import { serializeReservation } from "@/lib/agency-types";
-import { calcReservationTotals } from "@/lib/agency-pricing";
+import { calcReservationTotals, VAT_RATE } from "@/lib/agency-pricing";
+import { fetchReservationById } from "@/lib/agency-queries";
 
 interface ctx {
   params: Promise<{ id: string }>;
@@ -15,17 +16,7 @@ export async function GET(_req: NextRequest, { params }: ctx) {
   }
   try {
     const { id } = await params;
-    const reservation = await db.reservation.findUnique({
-      where: { id },
-      include: {
-        tours: true,
-        transports: true,
-        hotels: true,
-        guests: true,
-        payments: true,
-        employee: true,
-      },
-    });
+    const reservation = await fetchReservationById(id);
     if (!reservation) {
       return NextResponse.json(
         { error: "Reservation not found" },
@@ -77,7 +68,6 @@ export async function PUT(req: NextRequest, { params }: ctx) {
     if (body.remarks !== undefined) data.remarks = body.remarks ? String(body.remarks) : null;
     if (body.termsAccepted !== undefined)
       data.termsAccepted = Boolean(body.termsAccepted);
-    // Fraud fields
     if (body.manualReview !== undefined) {
       const review = String(body.manualReview);
       if (["PENDING", "REAL", "SPAM"].includes(review)) {
@@ -87,39 +77,35 @@ export async function PUT(req: NextRequest, { params }: ctx) {
     if (body.isFlagged !== undefined) data.isFlagged = Boolean(body.isFlagged);
     if (body.fraudScore !== undefined) data.fraudScore = Number(body.fraudScore) || 0;
 
-    const updated = await db.reservation.update({
-      where: { id },
-      data,
-      include: {
-        tours: true,
-        transports: true,
-        hotels: true,
-        guests: true,
-        payments: true,
-        employee: true,
-      },
-    });
+    await db.reservation.update({ where: { id }, data });
 
-    // Recalculate totals (invoice type may have changed)
+    // Re-fetch with resilient include
+    const updated = await fetchReservationById(id);
+    if (!updated) {
+      return NextResponse.json(
+        { error: "Reservation not found after update" },
+        { status: 404 },
+      );
+    }
+
+    // Recalculate totals
     const totals = calcReservationTotals(
-      updated.tours,
-      updated.transports,
-      updated.hotels,
-      updated.payments,
+      updated.tours ?? [],
+      updated.transports ?? [],
+      updated.hotels ?? [],
+      updated.payments ?? [],
       updated.invoiceType,
+      VAT_RATE,
+      updated.flights ?? [],
+      updated.visas ?? [],
+      updated.extras ?? [],
     );
-    const final_ = await db.reservation.update({
+    const { subTotal, vatAmount, totalAmount, amountPaid, balanceDue } = totals;
+    await db.reservation.update({
       where: { id },
-      data: totals,
-      include: {
-        tours: true,
-        transports: true,
-        hotels: true,
-        guests: true,
-        payments: true,
-        employee: true,
-      },
+      data: { subTotal, vatAmount, totalAmount, amountPaid, balanceDue },
     });
+    const final_ = await fetchReservationById(id);
 
     return NextResponse.json({ reservation: serializeReservation(final_) });
   } catch (err) {
@@ -132,9 +118,6 @@ export async function PUT(req: NextRequest, { params }: ctx) {
 }
 
 // PATCH /api/agency/reservations/[id] — partial update
-// Used by the booking list "Open" button to flip status → "In Process",
-// and by the eye-dialog Real / Spam / Reset buttons to update manualReview.
-// Body: { bookingStatus?, manualReview?, isFlagged? }
 export async function PATCH(req: NextRequest, { params }: ctx) {
   if (!(await isAdminAuthed())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -174,19 +157,14 @@ export async function PATCH(req: NextRequest, { params }: ctx) {
     if (body.isFlagged !== undefined) data.isFlagged = Boolean(body.isFlagged);
     if (body.fraudScore !== undefined) data.fraudScore = Number(body.fraudScore) || 0;
 
-    const updated = await db.reservation.update({
-      where: { id },
-      data,
-      include: {
-        tours: true,
-        transports: true,
-        hotels: true,
-        guests: true,
-        payments: true,
-        employee: true,
-      },
-    });
-
+    await db.reservation.update({ where: { id }, data });
+    const updated = await fetchReservationById(id);
+    if (!updated) {
+      return NextResponse.json(
+        { error: "Reservation not found after update" },
+        { status: 404 },
+      );
+    }
     return NextResponse.json({ reservation: serializeReservation(updated) });
   } catch (err) {
     console.error("agency reservation PATCH error:", err);
@@ -211,10 +189,13 @@ export async function DELETE(_req: NextRequest, { params }: ctx) {
         { status: 404 },
       );
     }
-    // Prisma does not auto-cascade — delete children first.
+    // Delete children first. Wrap new-model deletes in try/catch.
     await db.tourBooking.deleteMany({ where: { reservationId: id } });
     await db.transportBooking.deleteMany({ where: { reservationId: id } });
     await db.hotelBooking.deleteMany({ where: { reservationId: id } });
+    try { await db.flightBooking.deleteMany({ where: { reservationId: id } }); } catch { /* table may not exist */ }
+    try { await db.visaBooking.deleteMany({ where: { reservationId: id } }); } catch { /* table may not exist */ }
+    try { await db.extraBooking.deleteMany({ where: { reservationId: id } }); } catch { /* table may not exist */ }
     await db.guest.deleteMany({ where: { reservationId: id } });
     await db.payment.deleteMany({ where: { reservationId: id } });
     await db.reservation.delete({ where: { id } });

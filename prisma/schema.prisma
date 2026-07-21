@@ -270,6 +270,9 @@ model Reservation {
   tours           TourBooking[]
   transports      TransportBooking[]
   hotels          HotelBooking[]
+  flights         FlightBooking[]
+  visas           VisaBooking[]
+  extras          ExtraBooking[]
   guests          Guest[]
   payments        Payment[]
 
@@ -476,4 +479,112 @@ model Payment {
 
   receivedBy      String?  // employee who received the payment
   createdAt       DateTime @default(now())
+}
+
+// Flight booking (operational record)
+model FlightBooking {
+  id              String   @id @default(cuid())
+  reservationId   String
+  reservation     Reservation @relation(fields: [reservationId], references: [id])
+
+  airline         String   @default("")
+  flightNumber    String?
+  flightType      String   @default("ONE_WAY") // ONE_WAY | ROUND_TRIP | MULTI_CITY
+  cabinClass      String   @default("ECONOMY") // ECONOMY | PREMIUM | BUSINESS | FIRST
+  origin          String   @default("")
+  destination     String   @default("")
+  departDate      DateTime
+  returnDate      DateTime?
+
+  noOfAdults      Int      @default(1)
+  noOfChildren    Int      @default(0)
+  noOfInfants     Int      @default(0)
+
+  supplierId      String?
+  supplierName    String?
+  pnr             String?
+  confirmationNumber String?
+  status          String   @default("INITIATED")
+  comments        String?
+
+  // Pricing
+  adultCostRate   Float    @default(0)
+  childCostRate   Float    @default(0)
+  infantCostRate  Float    @default(0)
+  totalCost       Float    @default(0)
+  adultSellRate   Float    @default(0)
+  childSellRate   Float    @default(0)
+  infantSellRate  Float    @default(0)
+  totalSell       Float    @default(0)
+
+  showOnVoucher   Boolean  @default(true)
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Visa booking (operational record)
+model VisaBooking {
+  id              String   @id @default(cuid())
+  reservationId   String
+  reservation     Reservation @relation(fields: [reservationId], references: [id])
+
+  visaType        String   @default("TOURIST") // TOURIST | TRANSIT | BUSINESS | STUDENT | WORK
+  destinationCountry String @default("")
+  visaDuration    String?
+  processingType  String   @default("NORMAL") // NORMAL | URGENT | EXPRESS
+  applicationDate DateTime @default(now())
+  travelDate      DateTime?
+
+  noOfAdults      Int      @default(1)
+  noOfChildren    Int      @default(0)
+
+  supplierId      String?
+  supplierName    String?
+  applicationNumber String?
+  confirmationNumber String?
+  status          String   @default("INITIATED")
+  comments        String?
+
+  // Pricing
+  adultCostRate   Float    @default(0)
+  childCostRate   Float    @default(0)
+  totalCost       Float    @default(0)
+  adultSellRate   Float    @default(0)
+  childSellRate   Float    @default(0)
+  totalSell       Float    @default(0)
+
+  showOnVoucher   Boolean  @default(true)
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Extras booking (insurance, SIM, lounge, photographer, etc.)
+model ExtraBooking {
+  id              String   @id @default(cuid())
+  reservationId   String
+  reservation     Reservation @relation(fields: [reservationId], references: [id])
+
+  extraName       String   @default("")
+  extraOption     String?
+  serviceDate     DateTime?
+  quantity        Int      @default(1)
+
+  supplierId      String?
+  supplierName    String?
+  confirmationNumber String?
+  status          String   @default("INITIATED")
+  comments        String?
+
+  // Pricing
+  costRate        Float    @default(0)
+  totalCost       Float    @default(0)
+  sellRate        Float    @default(0)
+  totalSell       Float    @default(0)
+
+  showOnVoucher   Boolean  @default(true)
+  createdBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }

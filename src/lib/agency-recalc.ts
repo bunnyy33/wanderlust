@@ -1,19 +1,12 @@
 // Recompute and persist reservation totals (subTotal, VAT, totalAmount,
-// amountPaid, balanceDue) whenever a service or payment changes.
+// amountPaid, balanceDue, totalCost) whenever a service or payment changes.
 
-import { db } from "@/lib/db";
 import { calcReservationTotals } from "./agency-pricing";
+import { fetchReservationById } from "./agency-queries";
+import { db } from "@/lib/db";
 
 export async function recalcReservation(reservationId: string) {
-  const reservation = await db.reservation.findUnique({
-    where: { id: reservationId },
-    include: {
-      tours: true,
-      transports: true,
-      hotels: true,
-      payments: true,
-    },
-  });
+  const reservation = await fetchReservationForRecalc(reservationId);
   if (!reservation) return null;
 
   const totals = calcReservationTotals(
@@ -22,19 +15,21 @@ export async function recalcReservation(reservationId: string) {
     reservation.hotels,
     reservation.payments,
     reservation.invoiceType,
+    undefined, // vatRate default
+    reservation.flights,
+    reservation.visas,
+    reservation.extras,
   );
 
-  const updated = await db.reservation.update({
+  await db.reservation.update({
     where: { id: reservationId },
     data: totals,
-    include: {
-      tours: true,
-      transports: true,
-      hotels: true,
-      guests: true,
-      payments: true,
-      employee: true,
-    },
   });
-  return updated;
+
+  // Re-fetch through the resilient helper so the returned object includes
+  // flights/visas/extras (backfilled to [] if the tables don't exist).
+  return fetchReservationById(reservationId);
 }
+
+// Re-export so existing import sites keep working.
+export { fetchReservationById as fetchReservationForRecalc } from "./agency-queries";

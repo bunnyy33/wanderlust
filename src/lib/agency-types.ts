@@ -136,6 +136,91 @@ export interface HotelBookingT {
   updatedAt: string;
 }
 
+export interface FlightBookingT {
+  id: string;
+  reservationId: string;
+  airline: string;
+  flightNumber?: string | null;
+  flightType: string;
+  cabinClass: string;
+  origin: string;
+  destination: string;
+  departDate: string;
+  returnDate?: string | null;
+  noOfAdults: number;
+  noOfChildren: number;
+  noOfInfants: number;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  pnr?: string | null;
+  confirmationNumber?: string | null;
+  status: string;
+  comments?: string | null;
+  adultCostRate: number;
+  childCostRate: number;
+  infantCostRate: number;
+  totalCost: number;
+  adultSellRate: number;
+  childSellRate: number;
+  infantSellRate: number;
+  totalSell: number;
+  showOnVoucher: boolean;
+  createdBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VisaBookingT {
+  id: string;
+  reservationId: string;
+  visaType: string;
+  destinationCountry: string;
+  visaDuration?: string | null;
+  processingType: string;
+  applicationDate: string;
+  travelDate?: string | null;
+  noOfAdults: number;
+  noOfChildren: number;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  applicationNumber?: string | null;
+  confirmationNumber?: string | null;
+  status: string;
+  comments?: string | null;
+  adultCostRate: number;
+  childCostRate: number;
+  totalCost: number;
+  adultSellRate: number;
+  childSellRate: number;
+  totalSell: number;
+  showOnVoucher: boolean;
+  createdBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExtraBookingT {
+  id: string;
+  reservationId: string;
+  extraName: string;
+  extraOption?: string | null;
+  serviceDate?: string | null;
+  quantity: number;
+  supplierId?: string | null;
+  supplierName?: string | null;
+  confirmationNumber?: string | null;
+  status: string;
+  comments?: string | null;
+  costRate: number;
+  totalCost: number;
+  sellRate: number;
+  totalSell: number;
+  showOnVoucher: boolean;
+  createdBy?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface PaymentT {
   id: string;
   reservationId: string;
@@ -185,6 +270,9 @@ export interface ReservationT {
   tours: TourBookingT[];
   transports: TransportBookingT[];
   hotels: HotelBookingT[];
+  flights: FlightBookingT[];
+  visas: VisaBookingT[];
+  extras: ExtraBookingT[];
   guests: GuestT[];
   payments: PaymentT[];
   createdAt: string;
@@ -374,6 +462,101 @@ export function serializeHotelBooking(h: any): HotelBookingT {
   };
 }
 
+export function serializeFlightBooking(f: any): FlightBookingT {
+  return {
+    id: f.id,
+    reservationId: f.reservationId,
+    airline: f.airline ?? "",
+    flightNumber: f.flightNumber ?? null,
+    flightType: f.flightType ?? "ONE_WAY",
+    cabinClass: f.cabinClass ?? "ECONOMY",
+    origin: f.origin ?? "",
+    destination: f.destination ?? "",
+    departDate: f.departDate
+      ? new Date(f.departDate).toISOString()
+      : new Date().toISOString(),
+    returnDate: f.returnDate ? new Date(f.returnDate).toISOString() : null,
+    noOfAdults: f.noOfAdults,
+    noOfChildren: f.noOfChildren,
+    noOfInfants: f.noOfInfants,
+    supplierId: f.supplierId ?? null,
+    supplierName: f.supplierName ?? null,
+    pnr: f.pnr ?? null,
+    confirmationNumber: f.confirmationNumber ?? null,
+    status: f.status ?? "INITIATED",
+    comments: f.comments ?? null,
+    adultCostRate: f.adultCostRate,
+    childCostRate: f.childCostRate,
+    infantCostRate: f.infantCostRate,
+    totalCost: f.totalCost,
+    adultSellRate: f.adultSellRate,
+    childSellRate: f.childSellRate,
+    infantSellRate: f.infantSellRate,
+    totalSell: f.totalSell,
+    showOnVoucher: f.showOnVoucher,
+    createdBy: f.createdBy ?? null,
+    createdAt: f.createdAt?.toISOString?.() ?? f.createdAt,
+    updatedAt: f.updatedAt?.toISOString?.() ?? f.updatedAt,
+  };
+}
+
+export function serializeVisaBooking(v: any): VisaBookingT {
+  return {
+    id: v.id,
+    reservationId: v.reservationId,
+    visaType: v.visaType ?? "TOURIST",
+    destinationCountry: v.destinationCountry ?? "",
+    visaDuration: v.visaDuration ?? null,
+    processingType: v.processingType ?? "NORMAL",
+    applicationDate: v.applicationDate
+      ? new Date(v.applicationDate).toISOString()
+      : new Date().toISOString(),
+    travelDate: v.travelDate ? new Date(v.travelDate).toISOString() : null,
+    noOfAdults: v.noOfAdults,
+    noOfChildren: v.noOfChildren,
+    supplierId: v.supplierId ?? null,
+    supplierName: v.supplierName ?? null,
+    applicationNumber: v.applicationNumber ?? null,
+    confirmationNumber: v.confirmationNumber ?? null,
+    status: v.status ?? "INITIATED",
+    comments: v.comments ?? null,
+    adultCostRate: v.adultCostRate,
+    childCostRate: v.childCostRate,
+    totalCost: v.totalCost,
+    adultSellRate: v.adultSellRate,
+    childSellRate: v.childSellRate,
+    totalSell: v.totalSell,
+    showOnVoucher: v.showOnVoucher,
+    createdBy: v.createdBy ?? null,
+    createdAt: v.createdAt?.toISOString?.() ?? v.createdAt,
+    updatedAt: v.updatedAt?.toISOString?.() ?? v.updatedAt,
+  };
+}
+
+export function serializeExtraBooking(e: any): ExtraBookingT {
+  return {
+    id: e.id,
+    reservationId: e.reservationId,
+    extraName: e.extraName ?? "",
+    extraOption: e.extraOption ?? null,
+    serviceDate: e.serviceDate ? new Date(e.serviceDate).toISOString() : null,
+    quantity: e.quantity,
+    supplierId: e.supplierId ?? null,
+    supplierName: e.supplierName ?? null,
+    confirmationNumber: e.confirmationNumber ?? null,
+    status: e.status ?? "INITIATED",
+    comments: e.comments ?? null,
+    costRate: e.costRate,
+    totalCost: e.totalCost,
+    sellRate: e.sellRate,
+    totalSell: e.totalSell,
+    showOnVoucher: e.showOnVoucher,
+    createdBy: e.createdBy ?? null,
+    createdAt: e.createdAt?.toISOString?.() ?? e.createdAt,
+    updatedAt: e.updatedAt?.toISOString?.() ?? e.updatedAt,
+  };
+}
+
 export function serializePayment(p: any): PaymentT {
   return {
     id: p.id,
@@ -427,6 +610,9 @@ export function serializeReservation(r: any): ReservationT {
     tours: (r.tours ?? []).map(serializeTourBooking),
     transports: (r.transports ?? []).map(serializeTransportBooking),
     hotels: (r.hotels ?? []).map(serializeHotelBooking),
+    flights: (r.flights ?? []).map(serializeFlightBooking),
+    visas: (r.visas ?? []).map(serializeVisaBooking),
+    extras: (r.extras ?? []).map(serializeExtraBooking),
     guests: (r.guests ?? []).map(serializeGuest),
     payments: (r.payments ?? []).map(serializePayment),
     createdAt: r.createdAt?.toISOString?.() ?? r.createdAt,
@@ -438,6 +624,9 @@ export function serializeReservationListItem(r: any): ReservationListItemT {
   const tours: any[] = r.tours ?? [];
   const transports: any[] = r.transports ?? [];
   const hotels: any[] = r.hotels ?? [];
+  const flights: any[] = r.flights ?? [];
+  const visas: any[] = r.visas ?? [];
+  const extras: any[] = r.extras ?? [];
 
   let firstServiceName: string | null = null;
   if (tours[0]) firstServiceName = tours[0].tourName ?? null;
@@ -448,6 +637,21 @@ export function serializeReservationListItem(r: any): ReservationListItemT {
       .filter(Boolean)
       .join(" → ");
     if (!firstServiceName) firstServiceName = "Transfer";
+  }
+  if (!firstServiceName && flights[0]) {
+    const f = flights[0];
+    firstServiceName =
+      [f.airline, f.flightNumber, f.origin && f.destination ? `${f.origin} → ${f.destination}` : null]
+        .filter(Boolean)
+        .join(" — ") || "Flight";
+  }
+  if (!firstServiceName && visas[0]) {
+    firstServiceName = visas[0].destinationCountry
+      ? `${visas[0].destinationCountry} Visa`
+      : "Visa";
+  }
+  if (!firstServiceName && extras[0]) {
+    firstServiceName = extras[0].extraName || "Extra";
   }
 
   return {
@@ -465,7 +669,13 @@ export function serializeReservationListItem(r: any): ReservationListItemT {
     balanceDue: r.balanceDue,
     saleById: r.saleById ?? null,
     saleByName: r.employee?.name ?? null,
-    serviceCount: tours.length + transports.length + hotels.length,
+    serviceCount:
+      tours.length +
+      transports.length +
+      hotels.length +
+      flights.length +
+      visas.length +
+      extras.length,
     firstServiceName,
     ipAddress: r.ipAddress ?? null,
     userAgent: r.userAgent ?? null,
@@ -519,26 +729,94 @@ export function calcHotelPricing(input: {
   return { totalCost, totalSell };
 }
 
+export function calcFlightPricing(input: {
+  adultCostRate: number;
+  childCostRate: number;
+  infantCostRate: number;
+  adultSellRate: number;
+  childSellRate: number;
+  infantSellRate: number;
+  noOfAdults: number;
+  noOfChildren: number;
+  noOfInfants: number;
+}) {
+  const totalCost =
+    input.adultCostRate * input.noOfAdults +
+    input.childCostRate * input.noOfChildren +
+    input.infantCostRate * input.noOfInfants;
+  const totalSell =
+    input.adultSellRate * input.noOfAdults +
+    input.childSellRate * input.noOfChildren +
+    input.infantSellRate * input.noOfInfants;
+  return { totalCost, totalSell };
+}
+
+export function calcVisaPricing(input: {
+  adultCostRate: number;
+  childCostRate: number;
+  adultSellRate: number;
+  childSellRate: number;
+  noOfAdults: number;
+  noOfChildren: number;
+}) {
+  const totalCost =
+    input.adultCostRate * input.noOfAdults +
+    input.childCostRate * input.noOfChildren;
+  const totalSell =
+    input.adultSellRate * input.noOfAdults +
+    input.childSellRate * input.noOfChildren;
+  return { totalCost, totalSell };
+}
+
+export function calcExtraPricing(input: {
+  costRate: number;
+  sellRate: number;
+  quantity: number;
+}) {
+  const qty = Math.max(0, input.quantity);
+  const totalCost = input.costRate * qty;
+  const totalSell = input.sellRate * qty;
+  return { totalCost, totalSell };
+}
+
 export function calcReservationTotals(
   reservation: {
-    tours: { totalSell: number }[];
-    transports: { sellRate: number }[];
-    hotels: { totalSell: number }[];
+    tours: { totalSell: number; totalCost: number }[];
+    transports: { sellRate: number; netRate: number }[];
+    hotels: { totalSell: number; totalCost: number }[];
     payments: { amount: number; status: string }[];
     invoiceType: string;
   },
-  options: { vatRate?: number } = {},
+  options: {
+    vatRate?: number;
+    flights?: { totalSell: number; totalCost: number }[];
+    visas?: { totalSell: number; totalCost: number }[];
+    extras?: { totalSell: number; totalCost: number }[];
+  } = {},
 ) {
   const vatRate = options.vatRate ?? 0.05;
+  const flights = options.flights ?? [];
+  const visas = options.visas ?? [];
+  const extras = options.extras ?? [];
   const subTotal =
     reservation.tours.reduce((s, t) => s + (t.totalSell || 0), 0) +
     reservation.transports.reduce((s, t) => s + (t.sellRate || 0), 0) +
-    reservation.hotels.reduce((s, t) => s + (t.totalSell || 0), 0);
+    reservation.hotels.reduce((s, t) => s + (t.totalSell || 0), 0) +
+    flights.reduce((s, f) => s + (f.totalSell || 0), 0) +
+    visas.reduce((s, v) => s + (v.totalSell || 0), 0) +
+    extras.reduce((s, e) => s + (e.totalSell || 0), 0);
+  const totalCost =
+    reservation.tours.reduce((s, t) => s + (t.totalCost || 0), 0) +
+    reservation.transports.reduce((s, t) => s + (t.netRate || 0), 0) +
+    reservation.hotels.reduce((s, t) => s + (t.totalCost || 0), 0) +
+    flights.reduce((s, f) => s + (f.totalCost || 0), 0) +
+    visas.reduce((s, v) => s + (v.totalCost || 0), 0) +
+    extras.reduce((s, e) => s + (e.totalCost || 0), 0);
   const vatAmount = reservation.invoiceType === "TAXABLE" ? subTotal * vatRate : 0;
   const totalAmount = subTotal + vatAmount;
   const amountPaid = reservation.payments
     .filter((p) => p.status !== "REFUNDED")
     .reduce((s, p) => s + (p.amount || 0), 0);
   const balanceDue = Math.max(0, totalAmount - amountPaid);
-  return { subTotal, vatAmount, totalAmount, amountPaid, balanceDue };
+  return { subTotal, vatAmount, totalAmount, amountPaid, balanceDue, totalCost };
 }

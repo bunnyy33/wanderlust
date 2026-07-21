@@ -5,7 +5,8 @@ import {
   serializeReservation,
   serializeReservationListItem,
 } from "@/lib/agency-types";
-import { calcReservationTotals } from "@/lib/agency-pricing";
+import { calcReservationTotals, VAT_RATE } from "@/lib/agency-pricing";
+import { fetchReservationList, fetchReservationById } from "@/lib/agency-queries";
 
 function genReference(): string {
   const n = Math.floor(100000 + Math.random() * 900000);
@@ -94,12 +95,7 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const reservations = await db.reservation.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: limit,
-      include: { employee: true, tours: true, transports: true, hotels: true },
-    });
+    const reservations = await fetchReservationList(where, limit);
 
     return NextResponse.json({
       reservations: reservations.map(serializeReservationListItem),
@@ -175,30 +171,15 @@ export async function POST(req: NextRequest) {
         termsAccepted: Boolean(body.termsAccepted ?? false),
         ...genFraudData(),
       },
-      include: {
-        tours: true,
-        transports: true,
-        hotels: true,
-        guests: true,
-        payments: true,
-        employee: true,
-      },
     });
 
     // Compute initial totals (empty services)
-    const totals = calcReservationTotals([], [], [], [], created.invoiceType);
-    const updated = await db.reservation.update({
+    const totals = calcReservationTotals([], [], [], [], created.invoiceType, VAT_RATE);
+    await db.reservation.update({
       where: { id: created.id },
       data: totals,
-      include: {
-        tours: true,
-        transports: true,
-        hotels: true,
-        guests: true,
-        payments: true,
-        employee: true,
-      },
     });
+    const updated = await fetchReservationById(created.id);
 
     return NextResponse.json({ reservation: serializeReservation(updated) });
   } catch (err) {
