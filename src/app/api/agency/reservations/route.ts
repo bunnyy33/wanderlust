@@ -81,6 +81,8 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status") || "";
     const search = (searchParams.get("search") || "").trim();
+    const dateFrom = searchParams.get("dateFrom");
+    const dateTo = searchParams.get("dateTo");
     const limit = Math.min(200, Math.max(1, Number(searchParams.get("limit") || 100)));
 
     const where: any = {};
@@ -93,6 +95,12 @@ export async function GET(req: NextRequest) {
         { customerEmail: { contains: search } },
         { customerPhone: { contains: search } },
       ];
+    }
+    // Date range filter on orderDate
+    if (dateFrom || dateTo) {
+      where.orderDate = {};
+      if (dateFrom) where.orderDate.gte = new Date(dateFrom);
+      if (dateTo) { const d = new Date(dateTo); d.setHours(23, 59, 59, 999); where.orderDate.lte = d; }
     }
 
     const reservations = await fetchReservationList(where, limit);

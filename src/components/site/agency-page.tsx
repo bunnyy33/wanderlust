@@ -9,8 +9,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  ArrowLeft, Bed, Calendar, Car, ChevronDown, ChevronLeft, Compass, CreditCard,
-  Eye, FileText, Gift, Home as HomeIcon, Loader2, LogOut, Mail, MapPin,
+  ArrowLeft, BarChart3, Bed, Calendar, Car, ChevronDown, ChevronLeft, Compass, CreditCard,
+  Eye, FileText, Filter, Gift, Home as HomeIcon, Loader2, LogOut, Mail, MapPin,
   MessageCircle, Moon, Pencil, Plane, Plus, RefreshCw, Save, Search, ShieldAlert,
   Sticker, Sun, Ticket, Trash2, UserPlus, Users, X,
 } from "lucide-react";
@@ -309,8 +309,16 @@ function BookingList({ onOpen, onView }: {
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("ALL");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [serviceFilter, setServiceFilter] = useState("ALL");
   const [refreshKey, setRefreshKey] = useState(0);
   const [showTeam, setShowTeam] = useState(false);
+  const [showRevenue, setShowRevenue] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkStatus, setBulkStatus] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -318,15 +326,24 @@ function BookingList({ onOpen, onView }: {
       const params = new URLSearchParams();
       if (status && status !== "ALL") params.set("status", status);
       if (search.trim()) params.set("search", search.trim());
-      params.set("limit", "100");
+      if (dateFrom) params.set("dateFrom", dateFrom);
+      if (dateTo) params.set("dateTo", dateTo);
+      params.set("limit", "200");
       const res = await fetch(`/api/agency/reservations?${params.toString()}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
-      setItems(data.reservations ?? []);
+      let reservations = data.reservations ?? [];
+      // Client-side service-type filter (API doesn't support it natively)
+      if (serviceFilter !== "ALL") {
+        const key = `${serviceFilter}s` as keyof ReservationListItemT;
+        reservations = reservations.filter((r: any) => (r.serviceCount > 0 && r.firstServiceName));
+      }
+      setItems(reservations);
+      setSelected(new Set()); // clear selection on reload
     } catch (e: any) {
       toast.error(e.message ?? "Failed to load reservations");
     } finally { setLoading(false); }
-  }, [search, status]);
+  }, [search, status, dateFrom, dateTo, serviceFilter]);
 
   useEffect(() => {
     const t = setTimeout(load, 250);
@@ -360,17 +377,74 @@ function BookingList({ onOpen, onView }: {
     } finally { setOpeningId(null); }
   }
 
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelected((prev) => {
+      if (prev.size === items.length) return new Set();
+      return new Set(items.map((r) => r.id));
+    });
+  }
+
+  async function bulkUpdateStatus() {
+    if (!bulkStatus || selected.size === 0) return;
+    setBulkBusy(true);
+    let ok = 0;
+    let fail = 0;
+    for (const id of selected) {
+      try {
+        const res = await fetch(`/api/agency/reservations/${id}`, {
+          method: "PATCH", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ bookingStatus: bulkStatus }),
+        });
+        if (res.ok) ok++;
+        else fail++;
+      } catch { fail++; }
+    }
+    setBulkBusy(false);
+    setBulkStatus("");
+    toast.success(`${ok} bookings updated${fail > 0 ? `, ${fail} failed` : ""}`);
+    setRefreshKey((k) => k + 1);
+  }
+
+  // Revenue dashboard data
+  const revenueData = useMemo(() => {
+    const byStatus: Record<string, number> = {};
+    const byDay: Record<string, { revenue: number; count: number }> = {};
+    const byCurrency: Record<string, number> = {};
+    for (const r of items) {
+      byStatus[r.bookingStatus] = (byStatus[r.bookingStatus] ?? 0) + (r.totalAmount || 0);
+      const day = fmtDate(r.orderDate);
+      if (!byDay[day]) byDay[day] = { revenue: 0, count: 0 };
+      byDay[day].revenue += r.totalAmount || 0;
+      byDay[day].count++;
+      byCurrency[r.currency] = (byCurrency[r.currency] ?? 0) + (r.totalAmount || 0);
+    }
+    const dayList = Object.entries(byDay).sort((a, b) => a[0].localeCompare(b[0])).slice(-14); // last 14 days
+    const maxRevenue = Math.max(...dayList.map(([, v]) => v.revenue), 1);
+    return { byStatus, byDay: dayList, byCurrency, maxRevenue };
+  }, [items]);
+
   const kpis = useMemo(() => {
     const total = items.length;
     const revenue = items.reduce((s, r) => s + (r.totalAmount || 0), 0);
     const currency = items[0]?.currency ?? "AED";
     const pending = items.filter((r) => ["PENDING", "SUPPLIER_PENDING"].includes(r.bookingStatus)).length;
     const completed = items.filter((r) => r.bookingStatus === "COMPLETED").length;
-    return { total, revenue, currency, pending, completed };
+    const flagged = items.filter((r) => r.isFlagged).length;
+    return { total, revenue, currency, pending, completed, flagged };
   }, [items]);
 
   return (
     <div className="flex flex-col gap-3 p-3">
+      {/* KPI cards */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
           { label: "Total Bookings", value: kpis.total.toString(), cls: "border-primary/20 bg-primary/5 text-primary dark:bg-primary/10 dark:text-primary" },
@@ -385,6 +459,54 @@ function BookingList({ onOpen, onView }: {
         ))}
       </div>
 
+      {/* Revenue dashboard (collapsible) */}
+      {showRevenue && (
+        <div className="rounded-lg border border-border bg-card p-4 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-foreground">Revenue Dashboard</h3>
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setShowRevenue(false)}>Hide</Button>
+          </div>
+          {/* Revenue by day (bar chart) */}
+          <div className="mb-6">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Revenue (last 14 days)</p>
+            <div className="flex items-end gap-1 overflow-x-auto" style={{ minHeight: "120px" }}>
+              {revenueData.byDay.map(([day, v]) => (
+                <div key={day} className="flex shrink-0 flex-col items-center gap-1" style={{ width: "40px" }}>
+                  <div className="w-full rounded-t bg-primary/70 transition-all hover:bg-primary" style={{ height: `${(v.revenue / revenueData.maxRevenue) * 100}px` }} title={`${day}: ${money(kpis.currency, v.revenue)} (${v.count} bookings)`} />
+                  <span className="text-[8px] text-muted-foreground">{day.split(" ").slice(0, 2).join(" ")}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Revenue by status + currency */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Revenue by Status</p>
+              <div className="space-y-1.5">
+                {Object.entries(revenueData.byStatus).sort((a, b) => b[1] - a[1]).map(([status, amount]) => (
+                  <div key={status} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2"><StatusBadge status={status} /></div>
+                    <span className="font-mono font-semibold">{money(kpis.currency, amount)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Revenue by Currency</p>
+              <div className="space-y-1.5">
+                {Object.entries(revenueData.byCurrency).map(([cur, amount]) => (
+                  <div key={cur} className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">{cur}</span>
+                    <span className="font-mono font-semibold">{money(cur, amount)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Filter bar */}
       <div className="rounded-lg border border-border bg-card p-3 shadow-sm">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <div className="relative flex-1">
@@ -401,13 +523,62 @@ function BookingList({ onOpen, onView }: {
             </Select>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="h-9" onClick={() => setRefreshKey((k) => k + 1)}><RefreshCw className="mr-1.5 size-3.5" />Refresh</Button>
+            <Button variant="outline" size="sm" className="h-9" onClick={() => setShowFilters((v) => !v)}><Filter className="mr-1.5 size-3.5" />Filters</Button>
+            <Button variant="outline" size="sm" className="h-9" onClick={() => setShowRevenue((v) => !v)}><BarChart3 className="mr-1.5 size-3.5" />Revenue</Button>
+            <Button variant="outline" size="sm" className="h-9" onClick={() => setRefreshKey((k) => k + 1)}><RefreshCw className="mr-1.5 size-3.5" /></Button>
             <Button variant="outline" size="sm" className="h-9" onClick={() => setShowTeam(true)}><Users className="mr-1.5 size-3.5" />Team</Button>
-            <Button size="sm" onClick={handleNewBooking} className="h-9 bg-primary text-primary-foreground hover:bg-primary/90"><Plus className="mr-1.5 size-4" />New Booking</Button>
+            <Button size="sm" onClick={handleNewBooking} className="h-9 bg-primary text-primary-foreground hover:bg-primary/90"><Plus className="mr-1.5 size-4" />New</Button>
           </div>
         </div>
+        {/* Extended filters */}
+        {showFilters && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
+            <Field label="Date From" className="w-auto">
+              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 text-xs" />
+            </Field>
+            <Field label="Date To" className="w-auto">
+              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 text-xs" />
+            </Field>
+            <Field label="Service Type" className="w-auto">
+              <Select value={serviceFilter} onValueChange={setServiceFilter}>
+                <SelectTrigger className="h-8 text-xs w-32"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All Services</SelectItem>
+                  <SelectItem value="tour">Tours</SelectItem>
+                  <SelectItem value="hotel">Hotels</SelectItem>
+                  <SelectItem value="transport">Transport</SelectItem>
+                  <SelectItem value="flight">Flights</SelectItem>
+                  <SelectItem value="visa">Visas</SelectItem>
+                  <SelectItem value="extra">Extras</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => { setDateFrom(""); setDateTo(""); setServiceFilter("ALL"); }}>Clear filters</Button>
+          </div>
+        )}
       </div>
 
+      {/* Bulk actions bar (visible when items are selected) */}
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+          <span className="text-xs font-medium text-primary">{selected.size} selected</span>
+          <div className="flex items-center gap-2">
+            <Select value={bulkStatus} onValueChange={setBulkStatus}>
+              <SelectTrigger className="h-8 w-48 text-xs"><SelectValue placeholder="Change status to…" /></SelectTrigger>
+              <SelectContent>
+                {BOOKING_STATUSES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Button size="sm" className="h-8 bg-primary text-xs text-primary-foreground" disabled={!bulkStatus || bulkBusy} onClick={bulkUpdateStatus}>
+              {bulkBusy ? <Loader2 className="mr-1 size-3.5 animate-spin" /> : null}
+              Apply
+            </Button>
+            <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setSelected(new Set())}>Clear</Button>
+          </div>
+        </div>
+      )}
+
+      {/* Booking table */}
       <div className="rounded-lg border border-border bg-card shadow-sm">
         {loading ? (
           <div className="space-y-2 p-3">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
@@ -422,19 +593,27 @@ function BookingList({ onOpen, onView }: {
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/60 hover:bg-muted/60">
+                  <TableHead className="h-9 w-10 text-xs">
+                    <input type="checkbox" checked={selected.size === items.length && items.length > 0} onChange={toggleSelectAll} className="size-4 accent-primary" />
+                  </TableHead>
                   <TableHead className="h-9 min-w-[140px] text-xs">Booking #</TableHead>
                   <TableHead className="h-9 min-w-[140px] text-xs">Customer</TableHead>
                   <TableHead className="h-9 min-w-[160px] text-xs">Email</TableHead>
                   <TableHead className="h-9 min-w-[120px] text-xs">Phone</TableHead>
                   <TableHead className="h-9 min-w-[180px] text-xs">Activity</TableHead>
+                  <TableHead className="h-9 min-w-[100px] text-xs">Date</TableHead>
                   <TableHead className="h-9 min-w-[120px] text-xs">Status</TableHead>
+                  <TableHead className="h-9 min-w-[100px] text-xs text-right">Amount</TableHead>
                   <TableHead className="h-9 w-12 text-xs text-right">View</TableHead>
                   <TableHead className="h-9 w-20 text-xs text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {items.map((r) => (
-                  <TableRow key={r.id} className="h-11 text-xs">
+                  <TableRow key={r.id} className={cn("h-11 text-xs", selected.has(r.id) && "bg-primary/5")}>
+                    <TableCell>
+                      <input type="checkbox" checked={selected.has(r.id)} onChange={() => toggleSelect(r.id)} className="size-4 accent-primary" />
+                    </TableCell>
                     <TableCell className="font-mono font-semibold text-foreground">
                       <div className="flex items-center gap-1.5">
                         {r.isFlagged && <span className="size-1.5 rounded-full bg-rose-500" title="Flagged" />}
@@ -445,7 +624,9 @@ function BookingList({ onOpen, onView }: {
                     <TableCell className="max-w-[180px] truncate text-muted-foreground">{r.customerEmail}</TableCell>
                     <TableCell className="text-muted-foreground">{r.customerPhone ?? "—"}</TableCell>
                     <TableCell className="text-muted-foreground">{r.firstServiceName ?? "—"}</TableCell>
+                    <TableCell className="text-muted-foreground">{fmtDate(r.orderDate)}</TableCell>
                     <TableCell><StatusBadge status={r.bookingStatus} /></TableCell>
+                    <TableCell className="text-right font-mono">{money(r.currency, r.totalAmount)}</TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => onView(r)} title="Booking verification"><Eye className="size-3.5" /></Button>
                     </TableCell>
@@ -467,6 +648,7 @@ function BookingList({ onOpen, onView }: {
     </div>
   );
 }
+
 
 /* ====================================================================== */
 /* Team Management Dialog                                                 */
@@ -1543,16 +1725,16 @@ function HomeTab({ reservation, employees, onUpdated }: { reservation: Reservati
     customerName: reservation.customerName, customerEmail: reservation.customerEmail, customerPhone: reservation.customerPhone ?? "",
     orderDate: toInputDate(reservation.orderDate), invoiceDate: toInputDate(reservation.invoiceDate),
     bookingStatus: reservation.bookingStatus, supplierPending: reservation.bookingStatus === "SUPPLIER_PENDING" ? "YES" : "NO",
-    saleById: reservation.saleById ?? "", invoiceType: reservation.invoiceType, remarks: reservation.remarks ?? "", termsAccepted: reservation.termsAccepted,
+    saleById: reservation.saleById ?? "", invoiceType: reservation.invoiceType, currency: reservation.currency, remarks: reservation.remarks ?? "", termsAccepted: reservation.termsAccepted,
   });
   const [saving, setSaving] = useState(false);
-  useEffect(() => { setForm({ customerName: reservation.customerName, customerEmail: reservation.customerEmail, customerPhone: reservation.customerPhone ?? "", orderDate: toInputDate(reservation.orderDate), invoiceDate: toInputDate(reservation.invoiceDate), bookingStatus: reservation.bookingStatus, supplierPending: reservation.bookingStatus === "SUPPLIER_PENDING" ? "YES" : "NO", saleById: reservation.saleById ?? "", invoiceType: reservation.invoiceType, remarks: reservation.remarks ?? "", termsAccepted: reservation.termsAccepted }); }, [reservation]);
+  useEffect(() => { setForm({ customerName: reservation.customerName, customerEmail: reservation.customerEmail, customerPhone: reservation.customerPhone ?? "", orderDate: toInputDate(reservation.orderDate), invoiceDate: toInputDate(reservation.invoiceDate), bookingStatus: reservation.bookingStatus, supplierPending: reservation.bookingStatus === "SUPPLIER_PENDING" ? "YES" : "NO", saleById: reservation.saleById ?? "", invoiceType: reservation.invoiceType, currency: reservation.currency, remarks: reservation.remarks ?? "", termsAccepted: reservation.termsAccepted }); }, [reservation]);
   function patch(p: any) { setForm((f) => ({ ...f, ...p })); }
   function changeSupplierPending(v: string) { setForm((f) => { let next = f.bookingStatus; if (v === "YES" && f.bookingStatus === "PENDING") next = "SUPPLIER_PENDING"; else if (v === "NO" && f.bookingStatus === "SUPPLIER_PENDING") next = "PENDING"; return { ...f, supplierPending: v, bookingStatus: next }; }); }
   async function save() {
     setSaving(true);
     try {
-      const res = await fetch(`/api/agency/reservations/${reservation.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ customerName: form.customerName, customerEmail: form.customerEmail, customerPhone: form.customerPhone, orderDate: form.orderDate, invoiceDate: form.invoiceDate, bookingStatus: form.bookingStatus, saleById: form.saleById || null, invoiceType: form.invoiceType, remarks: form.remarks, termsAccepted: form.termsAccepted }) });
+      const res = await fetch(`/api/agency/reservations/${reservation.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ customerName: form.customerName, customerEmail: form.customerEmail, customerPhone: form.customerPhone, orderDate: form.orderDate, invoiceDate: form.invoiceDate, bookingStatus: form.bookingStatus, saleById: form.saleById || null, invoiceType: form.invoiceType, currency: form.currency, remarks: form.remarks, termsAccepted: form.termsAccepted }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
       onUpdated(data.reservation);
@@ -1579,6 +1761,7 @@ function HomeTab({ reservation, employees, onUpdated }: { reservation: Reservati
             <Field label="Created By"><Input value={employees.find((e) => e.id === reservation.createdById)?.name ?? "—"} readOnly className="h-9 bg-muted/40 text-sm" /></Field>
             <Field label="Updated By"><Input value={employees.find((e) => e.id === reservation.updatedById)?.name ?? "—"} readOnly className="h-9 bg-muted/40 text-sm" /></Field>
             <Field label="Invoice Type"><Select value={form.invoiceType} onValueChange={(v) => patch({ invoiceType: v })}><SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger><SelectContent>{INVOICE_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent></Select></Field>
+            <Field label="Currency"><Select value={form.currency} onValueChange={(v) => patch({ currency: v })}><SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="AED">AED (UAE Dirham)</SelectItem><SelectItem value="USD">USD (US Dollar)</SelectItem><SelectItem value="EUR">EUR (Euro)</SelectItem><SelectItem value="GBP">GBP (British Pound)</SelectItem><SelectItem value="INR">INR (Indian Rupee)</SelectItem><SelectItem value="SAR">SAR (Saudi Riyal)</SelectItem></SelectContent></Select></Field>
           </div>
           <div className="mt-3">
             <Field label="Remarks"><Textarea rows={3} value={form.remarks} onChange={(e) => patch({ remarks: e.target.value })} className="text-sm" placeholder="Internal notes visible to agents only…" /></Field>
