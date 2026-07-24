@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { ImageCarousel } from "./image-carousel";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -116,7 +117,7 @@ export function TourPageView({
     <div className="flex min-h-screen flex-col">
       <Header />
       <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:py-8">
-        <Gallery images={experience.images} title={experience.title} />
+        <ImageCarousel images={experience.images} title={experience.title} />
 
         <div className="mt-8 grid gap-10 lg:grid-cols-[1fr_400px]">
           <div className="min-w-0">
@@ -206,27 +207,6 @@ export function TourPageView({
         </div>
       </div>
       <Footer />
-    </div>
-  );
-}
-
-function Gallery({ images, title }: { images: string[]; title: string }) {
-  const [active, setActive] = useState(0);
-  const imgs = images.length > 0 ? images : ["https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=2000&q=80"];
-  return (
-    <div className="relative">
-      <div className="relative aspect-[16/9] w-full overflow-hidden rounded-2xl sm:aspect-[2/1]">
-        <Image src={imgs[active] || imgs[0]} alt={title} fill priority className="object-cover" sizes="(max-width:1024px) 100vw, 1024px" />
-      </div>
-      {imgs.length > 1 && (
-        <div className="mt-2 flex gap-2 overflow-x-auto no-scrollbar">
-          {imgs.map((img, i) => (
-            <button key={i} onClick={() => setActive(i)} className={cn("relative h-16 w-24 shrink-0 overflow-hidden rounded-lg border-2 transition-all", i === active ? "border-primary" : "border-transparent opacity-60 hover:opacity-100")}>
-              <Image src={img} alt={`${title} ${i + 1}`} fill className="object-cover" sizes="96px" />
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

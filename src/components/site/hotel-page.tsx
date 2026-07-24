@@ -8,6 +8,7 @@ import { Star, MapPin, Clock, Check, Heart, ChevronRight, Loader2, ShieldCheck, 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ImageCarousel } from "./image-carousel";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { useStore } from "@/lib/store";
@@ -85,7 +86,7 @@ export function HotelPageView({ hotel, reviews }: { hotel: HotelT; reviews: Revi
     <div className="flex min-h-screen flex-col">
       <Header />
       <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 lg:py-8">
-        <Gallery images={hotel.images} title={hotel.name} />
+        <ImageCarousel images={hotel.images} title={hotel.name} />
         <div className="mt-8 grid gap-10 lg:grid-cols-[1fr_400px]">
           <div className="min-w-0">
             <div className="flex items-center gap-1 text-gold">{Array.from({ length: hotel.starRating }).map((_, i) => <Star key={i} size={16} className="fill-[var(--gold)]" />)}</div>
@@ -124,12 +125,6 @@ export function HotelPageView({ hotel, reviews }: { hotel: HotelT; reviews: Revi
       <Footer />
     </div>
   );
-}
-
-function Gallery({ images, title }: { images: string[]; title: string }) {
-  const [active, setActive] = useState(0);
-  const imgs = images.length > 0 ? images : ["https://images.unsplash.com/photo-1568607979400-366bd4ba1b73?auto=format&fit=crop&w=2000&q=80"];
-  return (<div className="relative"><div className="relative aspect-[16/9] w-full overflow-hidden rounded-2xl sm:aspect-[2/1]"><Image src={imgs[active] || imgs[0]} alt={title} fill priority className="object-cover" sizes="(max-width:1024px) 100vw, 1024px" /></div>{imgs.length > 1 && (<div className="mt-2 flex gap-2 overflow-x-auto no-scrollbar">{imgs.map((img, i) => (<button key={i} onClick={() => setActive(i)} className={cn("relative h-16 w-24 shrink-0 overflow-hidden rounded-lg border-2 transition-all", i === active ? "border-primary" : "border-transparent opacity-60 hover:opacity-100")}><Image src={img} alt={`${title} ${i + 1}`} fill className="object-cover" sizes="96px" /></button>))}</div>)}</div>);
 }
 
 function InfoCard({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {
