@@ -2285,7 +2285,7 @@ export function AgencyPage() {
   }, [dark]);
 
   function goHome() { router.push("/"); }
-  async function handleSignOut() { await adminLogout(); router.push("/"); }
+  async function handleSignOut() { await adminLogout(); router.push("/login"); }
 
   if (!adminAuthChecked) {
     return (
