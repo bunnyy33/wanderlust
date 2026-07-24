@@ -50,3 +50,14 @@ prompt
 
 server.log
 # Skills directory
+
+# Local junk
+tool-results/
+agent-ctx/
+.zscripts/
+upload/
+db/*.db
+db/*.db-journal
+
+# CI temp
+ci.db
