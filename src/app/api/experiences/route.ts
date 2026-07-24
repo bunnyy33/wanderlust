@@ -1,6 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { serializeExperience } from "@/lib/transform";
+import { unstable_cache } from "next/cache";
+
+// Cached catalog fetch — revalidates every 5 minutes (tours don't change often)
+const getCachedExperiences = unstable_cache(
+  async (where: any, sort: any, limit: number) => {
+    return db.experience.findMany({
+      where,
+      orderBy: sort,
+      take: limit || undefined,
+      include: { destination: true, reviews: { select: { rating: true } } },
+    });
+  },
+  ["experiences-catalog"],
+  { revalidate: 300 } // 5 minutes
+);
 
 // GET /api/experiences?type=&destination=&q=&minPrice=&maxPrice=&sort=&limit=&featured=
 export async function GET(req: NextRequest) {
@@ -45,12 +60,19 @@ export async function GET(req: NextRequest) {
   else if (sort === "rating") orderBy = { rating: "desc" };
   else if (sort === "duration") orderBy = { durationHours: "asc" };
 
-  const experiences = await db.experience.findMany({
-    where,
-    orderBy,
-    include: { destination: true },
-    ...(limit ? { take: limit } : {}),
-  });
+  // Skip cache for search queries (q) since results vary widely
+  const useCache = !q && !destinationSlug;
+  let experiences;
+  if (useCache) {
+    experiences = await getCachedExperiences(where, orderBy, limit);
+  } else {
+    experiences = await db.experience.findMany({
+      where,
+      orderBy,
+      include: { destination: true },
+      ...(limit ? { take: limit } : {}),
+    });
+  }
 
   return NextResponse.json({
     experiences: experiences.map(serializeExperience),

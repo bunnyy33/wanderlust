@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAdminAuthed } from "@/lib/admin-auth";
+import { getCurrentEmployeeId } from "@/lib/employee-auth";
 import { serializeReservation } from "@/lib/agency-types";
 import { calcReservationTotals, VAT_RATE } from "@/lib/agency-pricing";
 import { fetchReservationById } from "@/lib/agency-queries";
@@ -76,6 +77,10 @@ export async function PUT(req: NextRequest, { params }: ctx) {
     }
     if (body.isFlagged !== undefined) data.isFlagged = Boolean(body.isFlagged);
     if (body.fraudScore !== undefined) data.fraudScore = Number(body.fraudScore) || 0;
+
+    // Auto-detect the logged-in employee for Updated By
+    const empId = await getCurrentEmployeeId();
+    if (empId) data.updatedById = empId;
 
     await db.reservation.update({ where: { id }, data });
 
