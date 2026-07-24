@@ -9,10 +9,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  ArrowLeft, Bed, Car, ChevronDown, ChevronLeft, Compass, CreditCard,
+  ArrowLeft, Bed, Calendar, Car, ChevronDown, ChevronLeft, Compass, CreditCard,
   Eye, FileText, Gift, Home as HomeIcon, Loader2, LogOut, Mail, MapPin,
-  Moon, Pencil, Plane, Plus, RefreshCw, Save, Search, ShieldAlert,
-  Sticker, Sun, Ticket, Trash2, UserPlus, X,
+  MessageCircle, Moon, Pencil, Plane, Plus, RefreshCw, Save, Search, ShieldAlert,
+  Sticker, Sun, Ticket, Trash2, UserPlus, Users, X,
 } from "lucide-react";
 
 import type {
@@ -310,6 +310,7 @@ function BookingList({ onOpen, onView }: {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("ALL");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [showTeam, setShowTeam] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -401,6 +402,7 @@ function BookingList({ onOpen, onView }: {
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" className="h-9" onClick={() => setRefreshKey((k) => k + 1)}><RefreshCw className="mr-1.5 size-3.5" />Refresh</Button>
+            <Button variant="outline" size="sm" className="h-9" onClick={() => setShowTeam(true)}><Users className="mr-1.5 size-3.5" />Team</Button>
             <Button size="sm" onClick={handleNewBooking} className="h-9 bg-primary text-primary-foreground hover:bg-primary/90"><Plus className="mr-1.5 size-4" />New Booking</Button>
           </div>
         </div>
@@ -459,7 +461,124 @@ function BookingList({ onOpen, onView }: {
           </div>
         )}
       </div>
+
+      {/* Team Management Dialog */}
+      <TeamDialog open={showTeam} onClose={() => setShowTeam(false)} />
     </div>
+  );
+}
+
+/* ====================================================================== */
+/* Team Management Dialog                                                 */
+/* ====================================================================== */
+
+function TeamDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [employees, setEmployees] = useState<EmployeeT[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newEmp, setNewEmp] = useState({ name: "", email: "", password: "", role: "JUNIOR_AGENT", phone: "" });
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/agency/employees");
+      const data = await res.json();
+      setEmployees(data.employees ?? []);
+    } catch { toast.error("Failed to load team"); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { if (open) { setLoading(true); load(); } }, [open, load]);
+
+  async function addEmployee() {
+    if (!newEmp.name.trim() || !newEmp.email.trim() || !newEmp.password.trim()) {
+      toast.error("Name, email, and password are required");
+      return;
+    }
+    try {
+      const res = await fetch("/api/agency/employees", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newEmp),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      toast.success("Agent added");
+      setNewEmp({ name: "", email: "", password: "", role: "JUNIOR_AGENT", phone: "" });
+      setShowAdd(false);
+      load();
+    } catch (e: any) { toast.error(e.message ?? "Failed to add agent"); }
+  }
+
+  async function toggleActive(emp: EmployeeT) {
+    try {
+      const res = await fetch(`/api/agency/employees/${emp.id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: !emp.active }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      toast.success(emp.active ? "Agent deactivated" : "Agent activated");
+      load();
+    } catch { toast.error("Failed to update agent"); }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl gap-0 p-0">
+        <DialogHeader className="p-4 pb-2">
+          <DialogTitle className="flex items-center gap-2"><Users className="size-5 text-primary" />Team Management</DialogTitle>
+          <DialogDescription>Manage agents who can access the agency console. Default password for demo agents: <code className="font-mono">agent123</code></DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[60vh] overflow-y-auto p-4 pt-2">
+          {loading ? (
+            <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
+          ) : (
+            <div className="space-y-2">
+              {employees.map((emp) => (
+                <div key={emp.id} className={cn("flex items-center justify-between rounded-lg border border-border p-3", !emp.active && "opacity-50")}>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">{emp.name}</p>
+                    <p className="text-xs text-muted-foreground">{emp.email} · {emp.role}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className={cn("text-[10px]", emp.active ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300" : "border-muted bg-muted text-muted-foreground")}>
+                      {emp.active ? "Active" : "Inactive"}
+                    </Badge>
+                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => toggleActive(emp)}>
+                      {emp.active ? "Deactivate" : "Activate"}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {showAdd && (
+            <div className="mt-4 space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+              <div className="grid grid-cols-2 gap-2">
+                <Input placeholder="Full name" value={newEmp.name} onChange={(e) => setNewEmp({ ...newEmp, name: e.target.value })} className="h-9 text-sm" />
+                <Input placeholder="Email" type="email" value={newEmp.email} onChange={(e) => setNewEmp({ ...newEmp, email: e.target.value })} className="h-9 text-sm" />
+                <Input placeholder="Password" type="text" value={newEmp.password} onChange={(e) => setNewEmp({ ...newEmp, password: e.target.value })} className="h-9 text-sm" />
+                <Select value={newEmp.role} onValueChange={(v) => setNewEmp({ ...newEmp, role: v })}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ADMIN">Admin</SelectItem>
+                    <SelectItem value="SENIOR_AGENT">Senior Agent</SelectItem>
+                    <SelectItem value="JUNIOR_AGENT">Junior Agent</SelectItem>
+                    <SelectItem value="ACCOUNTS">Accounts</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setShowAdd(false)}>Cancel</Button>
+                <Button size="sm" className="h-8 bg-primary text-xs text-primary-foreground" onClick={addEmployee}><Plus className="mr-1 size-3.5" />Add Agent</Button>
+              </div>
+            </div>
+          )}
+        </div>
+        <DialogFooter className="p-4 pt-2">
+          {!showAdd && <Button size="sm" className="h-8 bg-primary text-xs text-primary-foreground" onClick={() => setShowAdd(true)}><Plus className="mr-1 size-3.5" />Add New Agent</Button>}
+          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={onClose}>Close</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1646,6 +1765,40 @@ function ReservationDetail({ reservationId, onBack }: { reservationId: string; o
     finally { setDocBusy(false); }
   }
 
+  async function downloadCalendar() {
+    if (!reservation) return;
+    setDocBusy(true);
+    try {
+      const res = await fetch(`/api/agency/reservations/${reservation.id}/calendar`);
+      if (!res.ok) throw new Error("Failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${reservation.reference}.ics`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Calendar file downloaded");
+    } catch { toast.error("Failed to generate calendar"); }
+    finally { setDocBusy(false); }
+  }
+
+  async function sendWhatsApp() {
+    if (!reservation) return;
+    setDocBusy(true);
+    try {
+      const res = await fetch(`/api/agency/reservations/${reservation.id}/whatsapp`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: reservation.customerPhone ?? "", message: `Hello ${reservation.customerName}, your booking ${reservation.reference} is confirmed. Total: ${money(reservation.currency, reservation.totalAmount)}. Thank you for choosing Wanderlust!` }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      if (data.link) { window.open(data.link, "_blank"); toast.success("Opening WhatsApp…"); }
+      else { toast.success("WhatsApp message sent"); }
+    } catch { toast.error("Failed to send WhatsApp"); }
+    finally { setDocBusy(false); }
+  }
+
   if (loading || !reservation) {
     return (
       <div className="space-y-3 p-3">
@@ -1747,6 +1900,18 @@ function ReservationDetail({ reservationId, onBack }: { reservationId: string; o
               {docBusy ? <Loader2 className="size-3.5 animate-spin" /> : <FileText className="size-3.5 shrink-0 text-gold" />}
               {sidebarExpanded && <span>Invoice</span>}
             </button>
+            {/* Calendar (iCal export) */}
+            <button type="button" disabled={emailBusy || docBusy} onClick={downloadCalendar} title="Download Calendar"
+              className={cn("flex w-full items-center gap-2 rounded-md border border-border px-2.5 py-2 text-left text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50", !sidebarExpanded && "justify-center px-0")}>
+              {docBusy ? <Loader2 className="size-3.5 animate-spin" /> : <Calendar className="size-3.5 shrink-0 text-gold" />}
+              {sidebarExpanded && <span>Calendar</span>}
+            </button>
+            {/* WhatsApp */}
+            <button type="button" disabled={emailBusy || docBusy} onClick={sendWhatsApp} title="Send WhatsApp"
+              className={cn("flex w-full items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-left text-xs font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-50 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300", !sidebarExpanded && "justify-center px-0")}>
+              {docBusy ? <Loader2 className="size-3.5 animate-spin" /> : <MessageCircle className="size-3.5 shrink-0" />}
+              {sidebarExpanded && <span>WhatsApp</span>}
+            </button>
           </div>
         </div>
       </aside>
@@ -1759,6 +1924,8 @@ function ReservationDetail({ reservationId, onBack }: { reservationId: string; o
           <Button variant="outline" size="sm" className="h-8 text-xs" onClick={openCustomerEmailDialog} disabled={emailBusy}><Mail className="mr-1 size-3.5" />Customer</Button>
           <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => openVoucher()} disabled={docBusy}><Ticket className="mr-1 size-3.5" />Voucher</Button>
           <Button variant="outline" size="sm" className="h-8 text-xs" onClick={openInvoice} disabled={docBusy}><FileText className="mr-1 size-3.5" />Invoice</Button>
+          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={downloadCalendar} disabled={docBusy}><Calendar className="mr-1 size-3.5" />iCal</Button>
+          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={sendWhatsApp} disabled={docBusy}><MessageCircle className="mr-1 size-3.5" />WhatsApp</Button>
         </div>
 
         {/* Title row with Bookings button on the right */}

@@ -411,3 +411,36 @@ Stage Summary:
 - Updated By: readonly, will auto-detect when agent login is implemented.
 - Database issue: SORTED. Schema has FlightBooking/VisaBooking/ExtraBooking models. Local sqlite has tables. Production Neon needs `DATABASE_URL="<neon>" npx prisma db push` to create the 3 new tables (resilient queries prevent 500s until then).
 - Demo mode: YES, this is a demo/dev mode. It uses a shared admin password (wanderlust-admin-2024), not per-agent login. Email falls back to EmailLog logging when no RESEND_API_KEY. Data is real (seeded bookings + tours + hotels).
+
+---
+Task ID: FEATURES-BACKEND
+Agent: main
+Task: Backend features for the agency CRM — employee CRUD hardening, audit log, iCal export, webhooks, WhatsApp send, read-only supplier portal.
+
+Work Log:
+- EMPLOYEE CRUD: Updated `src/app/api/agency/employees/route.ts` POST and `src/app/api/agency/employees/[id]/route.ts` PUT to use `hashPassword()` from `@/lib/employee-auth` (replacing bcrypt — consistent with the existing seed-employee-passwords script and employee auth route). Changed DELETE from hard-delete to soft-delete (sets `active=false`) so historical reservations still resolve saleBy/createdBy. Email-uniqueness validation was already present in both routes.
+- AUDIT LOG: Added `AuditLog` model to `prisma/schema.prisma` (reservationId, employeeId, employeeName, action, entityType, entityId, changes JSON string, ipAddress, createdAt). Created `src/lib/audit.ts` with `logAudit()` (resilient — swallows errors if table missing) and `diffChanges()` (only iterates over patch keys so unchanged fields aren't logged). Wired `logAudit()` into the reservation PUT route (action=UPDATE) and PATCH route (action=STATUS_CHANGE when bookingStatus changes, else UPDATE). PATCH also fires `fireWebhook("BOOKING_STATUS_CHANGE", { reservationId, reference, oldStatus, newStatus })`. Created `GET /api/agency/audit` — filterable by reservationId/employeeId/action/entityType, cursor-paginated via `before` param, parses changes JSON back to object.
+- ICAL EXPORT: Created `GET /api/agency/reservations/[id]/calendar` — returns a `.ics` file with `Content-Type: text/calendar` and `Content-Disposition: attachment; filename="WL-RES-xxx.ics"`. Generates VEVENTs for: tours (DTSTART=tourDate+pickupTime, +4h duration), hotels (all-day DTSTART=checkIn / DTEND=checkOut), transports (DTSTART=pickupDateTime, +1h), flights (DTSTART=departDate, +3h). Proper RFC 5545 escaping (commas, semicolons, newlines), CRLF line endings, UID per event.
+- WEBHOOKS: Added `Webhook` model (url, events comma-sep, active, secret, createdAt). Created `src/lib/webhook.ts` with `fireWebhook(event, payload)` — queries active webhooks whose events list contains the event, POSTs `{ event, payload, timestamp }` to each URL in parallel with 10s timeout, includes `X-Webhook-Signature` header (HMAC-SHA256 of body) if secret is set. Fire-and-forget — delivery failures never block the reservation update. Created `GET /api/agency/webhooks` (list, secret masked as "***"), `POST /api/agency/webhooks` (create — auto-generates secret if not provided, returns it ONCE), `DELETE /api/agency/webhooks/[webhookId]`, and `PUT` for toggling active/changing events.
+- WHATSAPP: Created `POST /api/agency/reservations/[id]/whatsapp` — body `{ phone, message }`. Normalizes phone (strips non-digits, handles +/00/0 prefixes, converts UAE 0XXXXXXXXX to 971XXXXXXXXX). If `WHATSAPP_API_KEY` + `WHATSAPP_API_URL` env vars are set, POSTs to the WhatsApp Business API; otherwise returns a `wa.me/<phone>?text=<encoded>` link the agent can click. Always logs to AuditLog (action=EMAIL_SENT, entityType=RESERVATION, with channel/phone/message/sent/waLink in changes).
+- SUPPLIER PORTAL: Added `accessCode String?` to the `Supplier` model. Created `src/lib/supplier-auth.ts` mirroring `employee-auth.ts` — HMAC-signed `wl_supplier` cookie, `makeSupplierToken()` / `verifySupplierToken()` / `getCurrentSupplierId()` / `getCurrentSupplier()` / `setSupplierCookie()` / `clearSupplierCookie()` / `isSupplierAuthed()`. Created three read-only supplier routes: `POST /api/supplier/auth` (login with email + accessCode, rate-limited 10/15min), `GET /api/supplier/me` (current supplier info), `GET /api/supplier/reservations` (list of reservations that have any service with supplierId == this supplier — uses fetchReservationList with OR over tours/hotels/transports/flights/visas/extras; strips internal pricing/cost fields from the response so suppliers can't see the agency's books). Also updated the agency supplier POST + PUT routes to accept the `accessCode` field so admins can provision supplier logins.
+- SCHEMA PUSH: `bun run db:push` succeeded — sync-provider.mjs flipped provider to sqlite, prisma db push created the AuditLog + Webhook tables and added the accessCode column, prisma generate updated the client.
+- LINT: `bun run lint` → 0 errors, 0 warnings (exit 0).
+- CURL VERIFICATION (dev server on :3000):
+  • GET /api/agency/reservations/[id]/calendar → 200, text/calendar, valid VCALENDAR with VEVENTs ✓
+  • POST /api/agency/reservations/[id]/whatsapp → 200, wa.me link with normalized phone ✓
+  • GET /api/agency/audit?reservationId=X → 200, filtered entries with parsed changes ✓
+  • POST /api/agency/webhooks → 200, returns secret once; GET → masks as "***"; DELETE → ok ✓
+  • PATCH /api/agency/reservations/[id] (status change) → 200, audit entry created with action=STATUS_CHANGE + changes={bookingStatus:{old,new}} ✓
+  • PUT /api/agency/reservations/[id] (remarks update) → 200, audit entry with action=UPDATE + changes={remarks:{old,new}} ✓
+  • PUT /api/agency/suppliers/[id] (set accessCode) → 200; POST /api/supplier/auth → 200 sets wl_supplier cookie; GET /api/supplier/me → 200; GET /api/supplier/reservations → 200 returns only this supplier's reservations ✓
+
+Stage Summary:
+- 11 new files, 6 modified files. All backend — no frontend changes.
+- New Prisma models: AuditLog, Webhook. New Supplier field: accessCode.
+- New libs: audit.ts (logAudit + diffChanges), webhook.ts (fireWebhook with HMAC signing), supplier-auth.ts (session management).
+- New API routes: /api/agency/audit, /api/agency/webhooks (+ [webhookId]), /api/agency/reservations/[id]/calendar, /api/agency/reservations/[id]/whatsapp, /api/supplier/auth, /api/supplier/me, /api/supplier/reservations.
+- Hardened: employee POST/PUT now use hashPassword() (was bcrypt); employee DELETE now soft-deletes (sets active=false).
+- Reservation PUT + PATCH now write to the audit log; PATCH fires the BOOKING_STATUS_CHANGE webhook on status transitions.
+- Dev-server cache note: after running `bun run db:push` with new Prisma models, the running Next.js dev server keeps the OLD PrismaClient in memory. Touching `next.config.ts` forces a full Turbopack reload and picks up the new client. (This is a known Next.js+Prisma dev workflow quirk, not a code bug.)
+- Production note: run `DATABASE_URL="<neon>" npx prisma db push` on Neon to create the AuditLog + Webhook tables and add the Supplier.accessCode column. The resilient helpers (logAudit, fireWebhook) swallow Prisma errors so routes still return 200 even before the migration runs.

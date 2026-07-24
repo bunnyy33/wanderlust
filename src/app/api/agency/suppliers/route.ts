@@ -51,6 +51,7 @@ export async function POST(req: NextRequest) {
         address: body.address ? String(body.address) : null,
         city: body.city ? String(body.city) : null,
         country: body.country ? String(body.country) : null,
+        accessCode: body.accessCode ? String(body.accessCode) : null,
         currency: String(body.currency ?? "AED"),
         paymentTerms: body.paymentTerms ? String(body.paymentTerms) : null,
         markupType: String(body.markupType ?? "PERCENT"),

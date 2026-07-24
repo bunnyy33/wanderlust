@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAdminAuthed } from "@/lib/admin-auth";
-import { getCurrentEmployeeId } from "@/lib/employee-auth";
+import { getCurrentEmployee, getCurrentEmployeeId } from "@/lib/employee-auth";
 import { serializeReservation } from "@/lib/agency-types";
 import { calcReservationTotals, VAT_RATE } from "@/lib/agency-pricing";
 import { fetchReservationById } from "@/lib/agency-queries";
+import { logAudit, diffChanges } from "@/lib/audit";
+import { fireWebhook } from "@/lib/webhook";
 
 interface ctx {
   params: Promise<{ id: string }>;
@@ -82,7 +84,25 @@ export async function PUT(req: NextRequest, { params }: ctx) {
     const empId = await getCurrentEmployeeId();
     if (empId) data.updatedById = empId;
 
+    const changes = diffChanges(existing as unknown as Record<string, unknown>, data);
+
     await db.reservation.update({ where: { id }, data });
+
+    // Audit log — who changed what on this reservation
+    try {
+      const emp = await getCurrentEmployee();
+      const ip = req.headers.get("x-forwarded-for") || null;
+      await logAudit({
+        reservationId: id,
+        employeeId: emp?.id ?? empId ?? null,
+        employeeName: emp?.name ?? null,
+        action: "UPDATE",
+        entityType: "RESERVATION",
+        entityId: id,
+        changes,
+        ipAddress: ip,
+      });
+    } catch { /* audit must never break the request */ }
 
     // Re-fetch with resilient include
     const updated = await fetchReservationById(id);
@@ -162,7 +182,47 @@ export async function PATCH(req: NextRequest, { params }: ctx) {
     if (body.isFlagged !== undefined) data.isFlagged = Boolean(body.isFlagged);
     if (body.fraudScore !== undefined) data.fraudScore = Number(body.fraudScore) || 0;
 
+    const oldStatus = existing.bookingStatus;
+    const newStatus = data.bookingStatus ?? oldStatus;
+    const statusChanged = oldStatus !== newStatus;
+
+    const changes = diffChanges(
+      existing as unknown as Record<string, unknown>,
+      data,
+    );
+
     await db.reservation.update({ where: { id }, data });
+
+    // Audit log + webhook fire on status changes (the most important event
+    // for downstream integrations — supplier portals, finance teams, etc.).
+    if (Object.keys(changes).length > 0) {
+      try {
+        const emp = await getCurrentEmployee();
+        const ip = req.headers.get("x-forwarded-for") || null;
+        await logAudit({
+          reservationId: id,
+          employeeId: emp?.id ?? null,
+          employeeName: emp?.name ?? null,
+          action: statusChanged ? "STATUS_CHANGE" : "UPDATE",
+          entityType: "RESERVATION",
+          entityId: id,
+          changes,
+          ipAddress: ip,
+        });
+      } catch { /* audit must never break the request */ }
+    }
+
+    if (statusChanged) {
+      // Fire-and-forget — webhook delivery failures must never block the
+      // reservation update response.
+      void fireWebhook("BOOKING_STATUS_CHANGE", {
+        reservationId: id,
+        reference: existing.reference,
+        oldStatus,
+        newStatus,
+      }).catch(() => { /* ignore */ });
+    }
+
     const updated = await fetchReservationById(id);
     if (!updated) {
       return NextResponse.json(

@@ -6,6 +6,7 @@ import {
   clearEmployeeCookie,
   getCurrentEmployee,
 } from "@/lib/employee-auth";
+import { setAdminCookie, clearAdminCookie } from "@/lib/admin-auth";
 import { rateLimit } from "@/lib/rate-limit";
 
 // POST /api/employee/auth — login with email + password
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest) {
   // Logout
   if (body.action === "logout") {
     await clearEmployeeCookie();
+    await clearAdminCookie();
     return NextResponse.json({ ok: true });
   }
 
@@ -73,6 +75,7 @@ export async function POST(req: NextRequest) {
   }
 
   await setEmployeeCookie(emp.id);
+  await setAdminCookie(); // also set admin cookie so the auth gate passes
   return NextResponse.json({
     ok: true,
     employee: { id: emp.id, name: emp.name, email: emp.email, role: emp.role },

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { isAdminAuthed } from "@/lib/admin-auth";
+import { hashPassword } from "@/lib/employee-auth";
 import { serializeEmployee } from "@/lib/agency-types";
 
 interface ctx {
@@ -38,7 +38,7 @@ export async function PUT(req: NextRequest, { params }: ctx) {
     if (body.password !== undefined) {
       const password = String(body.password);
       if (password && password.length >= 6) {
-        data.passwordHash = await bcrypt.hash(password, 10);
+        data.passwordHash = hashPassword(password);
       }
     }
 
@@ -50,6 +50,7 @@ export async function PUT(req: NextRequest, { params }: ctx) {
   }
 }
 
+// DELETE /api/agency/employees/[id] — soft delete (deactivate)
 export async function DELETE(_req: NextRequest, { params }: ctx) {
   if (!(await isAdminAuthed())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -60,10 +61,15 @@ export async function DELETE(_req: NextRequest, { params }: ctx) {
     if (!existing) {
       return NextResponse.json({ error: "Employee not found" }, { status: 404 });
     }
-    await db.employee.delete({ where: { id } });
-    return NextResponse.json({ ok: true });
+    // Soft-delete: deactivate instead of removing the row so historical
+    // reservations still resolve the saleBy/createdBy employee record.
+    const updated = await db.employee.update({
+      where: { id },
+      data: { active: false },
+    });
+    return NextResponse.json({ ok: true, employee: serializeEmployee(updated) });
   } catch (err) {
     console.error("agency employee DELETE error:", err);
-    return NextResponse.json({ error: "Failed to delete employee" }, { status: 500 });
+    return NextResponse.json({ error: "Failed to deactivate employee" }, { status: 500 });
   }
 }

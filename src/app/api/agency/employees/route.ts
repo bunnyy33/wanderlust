@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
 import { db } from "@/lib/db";
 import { isAdminAuthed } from "@/lib/admin-auth";
+import { hashPassword } from "@/lib/employee-auth";
 import { serializeEmployee } from "@/lib/agency-types";
 
 // GET /api/agency/employees
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "email already in use" }, { status: 409 });
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = hashPassword(password);
     const created = await db.employee.create({
       data: {
         name,

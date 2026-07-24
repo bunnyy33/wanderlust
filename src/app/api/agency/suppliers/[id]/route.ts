@@ -33,6 +33,8 @@ export async function PUT(req: NextRequest, { params }: ctx) {
     if (body.city !== undefined) data.city = body.city ? String(body.city) : null;
     if (body.country !== undefined)
       data.country = body.country ? String(body.country) : null;
+    if (body.accessCode !== undefined)
+      data.accessCode = body.accessCode ? String(body.accessCode) : null;
     if (body.currency !== undefined) data.currency = String(body.currency);
     if (body.paymentTerms !== undefined)
       data.paymentTerms = body.paymentTerms ? String(body.paymentTerms) : null;
