@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 /**
  * Seed employee passwords — standalone Node.js version.
  * No bun required. Run with:
